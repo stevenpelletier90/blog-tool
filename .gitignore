@@ -48,10 +48,10 @@ Thumbs.db
 # Project specific
 output/
 *.xml
-*.txt
 temp_*.txt
 extracted_links.txt
 blog_posts.xml
+urls.txt
 
 # Logs
 *.log
