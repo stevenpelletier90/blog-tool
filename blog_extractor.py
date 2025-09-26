@@ -174,7 +174,7 @@ class BlogExtractor:
         return "Untitled Post"
 
     def extract_content(self, soup: BeautifulSoup) -> str:
-        """Extract main post content"""
+        """Extract main post content with HTML structure preserved"""
         selectors = [
             'section[data-hook="post-description"]',
             'article .entry-content',
@@ -187,13 +187,149 @@ class BlogExtractor:
         for selector in selectors:
             content_elem = soup.select_one(selector)
             if content_elem:
-                # Clean up the content
-                for script in content_elem.find_all(['script', 'style']):
-                    script.decompose()
+                # Clean up unwanted elements
+                for unwanted in content_elem.find_all(['script', 'style', 'noscript']):
+                    unwanted.decompose()
 
-                content = content_elem.get_text().strip()
-                if content and len(content) > 100:  # Must have substantial content
-                    return content
+                # Get HTML content instead of just text
+                html_content = content_elem.decode_contents()
+
+                # Check if there's substantial text content
+                text_content = content_elem.get_text().strip()
+                if text_content and len(text_content) > 100:
+                    # Clean and convert to Gutenberg blocks
+                    cleaned_html = self.clean_html(html_content)
+                    gutenberg_content = self.html_to_gutenberg(cleaned_html)
+                    return gutenberg_content
+
+        return ""
+
+    def clean_html(self, html_content: str) -> str:
+        """Clean HTML by removing unwanted attributes and elements while preserving structure"""
+        # Parse the HTML content
+        soup = BeautifulSoup(html_content, 'html.parser')
+
+        # Define allowed tags (semantic HTML only, NO images or br tags)
+        allowed_tags = {
+            'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+            'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li',
+            'blockquote', 'pre', 'code', 'a'
+        }
+
+        # Define which attributes to keep for specific tags
+        allowed_attrs = {
+            'a': ['href']
+        }
+
+        # Remove unwanted elements but keep their content
+        unwrap_tags = ['div', 'span', 'section', 'article', 'header', 'footer', 'nav']
+        for tag_name in unwrap_tags:
+            for tag in soup.find_all(tag_name):
+                if isinstance(tag, Tag):
+                    tag.unwrap()
+
+        # Clean attributes from all elements
+        for element in soup.find_all():
+            if isinstance(element, Tag):
+                if element.name in allowed_tags:
+                    # Keep only allowed attributes for this tag
+                    allowed = allowed_attrs.get(element.name, [])
+                    attrs_to_remove = [attr for attr in element.attrs.keys() if attr not in allowed]
+                    for attr in attrs_to_remove:
+                        del element.attrs[attr]
+                else:
+                    # Remove disallowed tags but keep their content
+                    element.unwrap()
+
+        # Remove empty paragraphs and those containing only br tags
+        for p in soup.find_all('p'):
+            if isinstance(p, Tag):
+                text_content = p.get_text().strip()
+                # Remove if empty or contains only whitespace/breaks
+                if not text_content or text_content == '':
+                    p.decompose()
+                # Also remove paragraphs that only contain br tags
+                elif p.find_all('br') and not p.get_text().strip():
+                    p.decompose()
+
+        # Remove all br tags completely
+        for br in soup.find_all('br'):
+            if isinstance(br, Tag):
+                br.decompose()
+
+        # Return cleaned HTML
+        return str(soup).strip()
+
+    def html_to_gutenberg(self, html_content: str) -> str:
+        """Convert clean HTML to Gutenberg blocks format"""
+        if not html_content.strip():
+            return ""
+
+        # Parse the cleaned HTML
+        soup = BeautifulSoup(html_content, 'html.parser')
+        gutenberg_blocks = []
+
+        # Process each top-level element
+        for element in soup.children:
+            if isinstance(element, Tag) and element.name:
+                block_html = self.element_to_gutenberg_block(element)
+                if block_html:
+                    gutenberg_blocks.append(block_html)
+            elif not isinstance(element, Tag) and str(element).strip():  # Text node with content
+                # Wrap loose text in paragraph block
+                text = str(element).strip()
+                if text:
+                    gutenberg_blocks.append(f'<!-- wp:paragraph -->\n<p>{text}</p>\n<!-- /wp:paragraph -->')
+
+        return '\n\n'.join(gutenberg_blocks)
+
+    def element_to_gutenberg_block(self, element) -> str:
+        """Convert a single HTML element to Gutenberg block"""
+        tag_name = element.name.lower()
+
+        if tag_name == 'p':
+            content = str(element)
+            return f'<!-- wp:paragraph -->\n{content}\n<!-- /wp:paragraph -->'
+
+        elif tag_name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+            level = int(tag_name[1])
+            content = str(element)
+            return f'<!-- wp:heading {{"level":{level}}} -->\n{content}\n<!-- /wp:heading -->'
+
+        elif tag_name in ['ul', 'ol']:
+            content = str(element)
+            return f'<!-- wp:list -->\n{content}\n<!-- /wp:list -->'
+
+        elif tag_name == 'blockquote':
+            # Wrap blockquote in proper wp-block-quote class
+            inner_content = element.decode_contents()
+            return f'<!-- wp:quote -->\n<blockquote class="wp-block-quote">{inner_content}</blockquote>\n<!-- /wp:quote -->'
+
+        elif tag_name == 'pre':
+            # Check if it contains code
+            if element.find('code'):
+                content = element.get_text()
+                return f'<!-- wp:code -->\n<pre class="wp-block-code"><code>{content}</code></pre>\n<!-- /wp:code -->'
+            else:
+                content = str(element)
+                return f'<!-- wp:preformatted -->\n{content}\n<!-- /wp:preformatted -->'
+
+        elif tag_name == 'img':
+            # Skip images completely
+            return ""
+
+        else:
+            # For other elements, wrap in paragraph or return as-is
+            content = str(element)
+            if tag_name in ['strong', 'b', 'em', 'i', 'u', 'a', 'code']:
+                # Inline elements - wrap in paragraph
+                return f'<!-- wp:paragraph -->\n<p>{content}</p>\n<!-- /wp:paragraph -->'
+            elif tag_name == 'br':
+                # Skip br tags completely
+                return ""
+            else:
+                # Block elements - return as-is or wrap in paragraph
+                return f'<!-- wp:paragraph -->\n<p>{content}</p>\n<!-- /wp:paragraph -->'
 
         return ""
 
@@ -318,12 +454,15 @@ class BlogExtractor:
         tags = self.extract_tags(soup)
         links = self.extract_links(soup, url)
 
+        # Calculate text length for display (strip HTML tags for counting)
+        text_for_counting = BeautifulSoup(content, 'html.parser').get_text() if content else ""
+
         data = {
             'status': 'success',
             'url': url,
             'title': title,
             'content': content,
-            'content_length': len(content),
+            'content_length': len(text_for_counting.strip()),
             'author': author,
             'date': date,
             'categories': categories,
@@ -369,7 +508,9 @@ class BlogExtractor:
                     f.write(f'<wp:post_date>{post["date"]}</wp:post_date>\n')
                     f.write(f'<dc:creator>{html.escape(post["author"])}</dc:creator>\n')
                     f.write('<content:encoded><![CDATA[')
-                    f.write(html.escape(post["content"]))
+                    # Handle ']]>' in content to prevent CDATA breaking (like WordPress wxr_cdata)
+                    content = post["content"].replace(']]>', ']]]]><![CDATA[>')
+                    f.write(content)
                     f.write(']]></content:encoded>\n')
 
                     # Add categories
@@ -425,7 +566,10 @@ def main():
         data = extractor.extract_blog_data(url)
 
         if data['status'] == 'success':
-            print(f"✓ Success - {data['title']}")
+            print(f"✓ Success: {data['title']}")
+            print(f"  URL: {data['url']}")
+            print(f"  Date: {data['date']}")
+            print(f"  Author: {data['author']}")
             print(f"  Content: {data['content_length']} characters")
             print(f"  Links: {len(data.get('links', []))} found")
             if data['categories']:
