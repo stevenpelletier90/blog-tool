@@ -4,6 +4,14 @@ Blog Content Extractor - Simplified with Playwright Only
 Extracts blog posts and converts to WordPress XML using only the best tool.
 """
 
+# Fix for Windows asyncio subprocess handling
+import sys
+import asyncio
+
+if sys.platform.startswith('win'):
+    # Windows requires ProactorEventLoop for subprocess operations
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 # Configuration
 URLS_FILE = "urls.txt"
 OUTPUT_DIR = "output"
