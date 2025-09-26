@@ -530,16 +530,65 @@ class BlogExtractor:
 
         return text
 
+    def parse_and_format_date(self, date_string: str) -> dict:
+        """Parse extracted date and format for WordPress WXR"""
+        from datetime import datetime
+        import re
+
+        if not date_string:
+            # Default to current date
+            now = datetime.now()
+            date_obj = now
+        else:
+            # Try to parse common date formats
+            date_formats = [
+                '%b %d, %Y',           # Nov 27, 2023
+                '%B %d, %Y',           # November 27, 2023
+                '%Y-%m-%d',            # 2023-11-27
+                '%m/%d/%Y',            # 11/27/2023
+                '%d/%m/%Y',            # 27/11/2023
+            ]
+
+            date_obj = None
+            for fmt in date_formats:
+                try:
+                    date_obj = datetime.strptime(date_string.strip(), fmt)
+                    break
+                except ValueError:
+                    continue
+
+            if not date_obj:
+                # If all parsing fails, use current date
+                date_obj = datetime.now()
+
+        # Format for WordPress WXR
+        return {
+            'rfc2822': date_obj.strftime('%a, %d %b %Y %H:%M:%S +0000'),  # Mon, 27 Nov 2023 00:00:00 +0000
+            'mysql': date_obj.strftime('%Y-%m-%d %H:%M:%S'),              # 2023-11-27 00:00:00
+            'mysql_gmt': date_obj.strftime('%Y-%m-%d %H:%M:%S')          # Same for GMT (simplified)
+        }
+
     def save_to_xml(self, filename: str):
         """Save extracted data to WordPress XML format"""
         output_path = os.path.join(self.output_dir, filename)
 
         with open(output_path, 'w', encoding='utf-8') as f:
             f.write('<?xml version="1.0" encoding="UTF-8" ?>\n')
-            f.write('<rss version="2.0" xmlns:wp="http://wordpress.org/export/1.2/">\n')
+            f.write('<rss version="2.0"\n')
+            f.write('    xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"\n')
+            f.write('    xmlns:content="http://purl.org/rss/1.0/modules/content/"\n')
+            f.write('    xmlns:wfw="http://wellformedweb.org/CommentAPI/"\n')
+            f.write('    xmlns:dc="http://purl.org/dc/elements/1.1/"\n')
+            f.write('    xmlns:wp="http://wordpress.org/export/1.2/">\n')
             f.write('<channel>\n')
             f.write('<title>Blog Export</title>\n')
+            f.write('<link>https://example.com</link>\n')
             f.write('<description>Exported blog posts</description>\n')
+            f.write('<pubDate>Wed, 01 Jan 2025 00:00:00 +0000</pubDate>\n')
+            f.write('<language>en-US</language>\n')
+            f.write('<wp:wxr_version>1.2</wp:wxr_version>\n')
+            f.write('<wp:base_site_url>https://example.com</wp:base_site_url>\n')
+            f.write('<wp:base_blog_url>https://example.com</wp:base_blog_url>\n')
 
             for post in self.extracted_data:
                 if post['status'] == 'success':
@@ -548,26 +597,49 @@ class BlogExtractor:
                     author = self.normalize_unicode(post["author"])
                     content = self.normalize_unicode(post["content"])
 
+                    # Parse and format the date properly
+                    date_formats = self.parse_and_format_date(post["date"])
+
+                    # Generate unique positive post ID
+                    post_id = abs(hash(post["url"]) % 1000000) + 1
+
                     f.write('<item>\n')
-                    f.write(f'<title><![CDATA[{html.escape(title)}]]></title>\n')
+                    f.write(f'<title><![CDATA[{title}]]></title>\n')
                     f.write(f'<link>{html.escape(post["url"])}</link>\n')
-                    f.write(f'<wp:post_date>{post["date"]}</wp:post_date>\n')
-                    f.write(f'<dc:creator>{html.escape(author)}</dc:creator>\n')
+                    f.write(f'<pubDate>{date_formats["rfc2822"]}</pubDate>\n')
+                    f.write(f'<dc:creator><![CDATA[{author}]]></dc:creator>\n')
+                    f.write('<guid isPermaLink="false">{}</guid>\n'.format(html.escape(post["url"])))
+                    f.write('<description></description>\n')
                     f.write('<content:encoded><![CDATA[')
                     # Handle ']]>' in content to prevent CDATA breaking (like WordPress wxr_cdata)
                     content = content.replace(']]>', ']]]]><![CDATA[>')
                     f.write(content)
                     f.write(']]></content:encoded>\n')
+                    f.write('<excerpt:encoded><![CDATA[]]></excerpt:encoded>\n')
+                    f.write(f'<wp:post_id>{post_id}</wp:post_id>\n')
+                    f.write(f'<wp:post_date><![CDATA[{date_formats["mysql"]}]]></wp:post_date>\n')
+                    f.write(f'<wp:post_date_gmt><![CDATA[{date_formats["mysql_gmt"]}]]></wp:post_date_gmt>\n')
+                    f.write('<wp:comment_status><![CDATA[open]]></wp:comment_status>\n')
+                    f.write('<wp:ping_status><![CDATA[open]]></wp:ping_status>\n')
+                    f.write('<wp:post_name><![CDATA[{}]]></wp:post_name>\n'.format(title.lower().replace(' ', '-')[:50]))
+                    f.write('<wp:status><![CDATA[publish]]></wp:status>\n')
+                    f.write('<wp:post_parent>0</wp:post_parent>\n')
+                    f.write('<wp:menu_order>0</wp:menu_order>\n')
+                    f.write('<wp:post_type><![CDATA[post]]></wp:post_type>\n')
+                    f.write('<wp:post_password><![CDATA[]]></wp:post_password>\n')
+                    f.write('<wp:is_sticky>0</wp:is_sticky>\n')
 
                     # Add categories
                     for cat in post["categories"]:
                         normalized_cat = self.normalize_unicode(cat)
-                        f.write(f'<category><![CDATA[{html.escape(normalized_cat)}]]></category>\n')
+                        f.write('<category domain="category" nicename="{}"><![CDATA[{}]]></category>\n'.format(
+                            normalized_cat.lower().replace(' ', '-'), normalized_cat))
 
                     # Add tags
                     for tag in post["tags"]:
                         normalized_tag = self.normalize_unicode(tag)
-                        f.write(f'<wp:tag><![CDATA[{html.escape(normalized_tag)}]]></wp:tag>\n')
+                        f.write('<category domain="post_tag" nicename="{}"><![CDATA[{}]]></category>\n'.format(
+                            normalized_tag.lower().replace(' ', '-'), normalized_tag))
 
                     f.write('</item>\n')
 

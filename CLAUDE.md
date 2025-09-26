@@ -4,11 +4,19 @@ Simplified, modern tool to extract blog posts from Wix and other platforms, conv
 
 ## Quick Start
 
+### Option 1: Easy Batch File (Recommended)
+
 1. Add URLs to `urls.txt` (one per line)
-2. Run: `blog-extractor-env/Scripts/python.exe extract.py`
+2. Double-click `run_extractor.bat`
 3. Find output in:
    - `output/blog_posts.xml` - WordPress XML for import
    - `output/extracted_links.txt` - All hyperlinks from blog content
+
+### Option 2: Command Line
+
+1. Add URLs to `urls.txt` (one per line)
+2. Run: `blog-extractor-env/Scripts/python.exe extract.py`
+3. Check the `output/` folder for results
 
 ## Key Features
 
@@ -86,11 +94,41 @@ Links saved to: output/extracted_links.txt
 - **Modern tooling** - Using latest Playwright for reliability
 - **Comprehensive extraction** - Gets everything: content, metadata, links
 
-## Run Command
+## Run Commands
+
+### Windows (Easy)
+
+```cmd
+Double-click: run_extractor.bat
+```
+
+### Windows (Command Line)
+
+```cmd
+blog-extractor-env\Scripts\python.exe extract.py
+```
+
+### Mac/Linux
 
 ```bash
-blog-extractor-env/Scripts/python.exe extract.py
+blog-extractor-env/bin/python extract.py
 ```
+
+## Prerequisites
+
+1. **Virtual environment** with dependencies installed
+2. **urls.txt file** with blog URLs (one per line)
+3. **Playwright browser** installed (`playwright install chromium`)
+
+## Troubleshooting
+
+**"Virtual environment not found"**: Make sure `blog-extractor-env/` folder exists with Python installed
+
+**"urls.txt not found"**: Create a text file named `urls.txt` with your blog URLs
+
+**"No URLs to process"**: Check that URLs in `urls.txt` start with `http` or `https`
+
+**Import fails in WordPress**: Ensure WordPress allows file uploads and try importing smaller batches
 
 ## Technical Notes
 
@@ -98,3 +136,4 @@ blog-extractor-env/Scripts/python.exe extract.py
 - Content-area detection prevents extraction of navigation/menu links
 - Handles Wix's dynamic loading and aria-label category/tag structure
 - Clean, type-safe code with proper error handling
+- Generates proper WordPress WXR format with Gutenberg blocks
