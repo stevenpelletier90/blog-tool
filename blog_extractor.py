@@ -489,6 +489,47 @@ class BlogExtractor:
         print(f"Loaded {len(urls)} URLs to process")
         return urls
 
+    def normalize_unicode(self, text: str) -> str:
+        """Normalize unicode characters to ASCII-compatible equivalents"""
+        import unicodedata
+
+        if not text:
+            return text
+
+        # First, apply general unicode normalization
+        text = unicodedata.normalize('NFKD', text)
+
+        # Manual replacements for common problematic characters
+        replacements = {
+            # Smart quotes
+            '\u2018': "'",  # Left single quotation mark
+            '\u2019': "'",  # Right single quotation mark
+            '\u201C': '"',  # Left double quotation mark
+            '\u201D': '"',  # Right double quotation mark
+
+            # Dashes
+            '\u2014': '--',  # Em dash
+            '\u2013': '-',   # En dash
+
+            # Other common characters
+            '\u2026': '...',  # Horizontal ellipsis
+            '\u00A0': ' ',    # Non-breaking space
+            '\u2022': '*',    # Bullet
+            '\u00B7': '*',    # Middle dot
+
+            # Accented characters (examples)
+            '\u00E9': 'e',   # é
+            '\u00E1': 'a',   # á
+            '\u00ED': 'i',   # í
+            '\u00F3': 'o',   # ó
+            '\u00FA': 'u',   # ú
+        }
+
+        for unicode_char, ascii_char in replacements.items():
+            text = text.replace(unicode_char, ascii_char)
+
+        return text
+
     def save_to_xml(self, filename: str):
         """Save extracted data to WordPress XML format"""
         output_path = os.path.join(self.output_dir, filename)
@@ -502,24 +543,31 @@ class BlogExtractor:
 
             for post in self.extracted_data:
                 if post['status'] == 'success':
+                    # Normalize unicode characters in all text fields
+                    title = self.normalize_unicode(post["title"])
+                    author = self.normalize_unicode(post["author"])
+                    content = self.normalize_unicode(post["content"])
+
                     f.write('<item>\n')
-                    f.write(f'<title><![CDATA[{html.escape(post["title"])}]]></title>\n')
+                    f.write(f'<title><![CDATA[{html.escape(title)}]]></title>\n')
                     f.write(f'<link>{html.escape(post["url"])}</link>\n')
                     f.write(f'<wp:post_date>{post["date"]}</wp:post_date>\n')
-                    f.write(f'<dc:creator>{html.escape(post["author"])}</dc:creator>\n')
+                    f.write(f'<dc:creator>{html.escape(author)}</dc:creator>\n')
                     f.write('<content:encoded><![CDATA[')
                     # Handle ']]>' in content to prevent CDATA breaking (like WordPress wxr_cdata)
-                    content = post["content"].replace(']]>', ']]]]><![CDATA[>')
+                    content = content.replace(']]>', ']]]]><![CDATA[>')
                     f.write(content)
                     f.write(']]></content:encoded>\n')
 
                     # Add categories
                     for cat in post["categories"]:
-                        f.write(f'<category><![CDATA[{html.escape(cat)}]]></category>\n')
+                        normalized_cat = self.normalize_unicode(cat)
+                        f.write(f'<category><![CDATA[{html.escape(normalized_cat)}]]></category>\n')
 
                     # Add tags
                     for tag in post["tags"]:
-                        f.write(f'<wp:tag><![CDATA[{html.escape(tag)}]]></wp:tag>\n')
+                        normalized_tag = self.normalize_unicode(tag)
+                        f.write(f'<wp:tag><![CDATA[{html.escape(normalized_tag)}]]></wp:tag>\n')
 
                     f.write('</item>\n')
 
