@@ -13,17 +13,20 @@ Simplified, modern tool to extract blog posts from Wix and other platforms, conv
 ## Key Features
 
 ### ✅ Modern Extraction
+
 - **Playwright-only approach** - Handles JavaScript-heavy sites (especially Wix) perfectly
 - **Wix-specific selectors** - Extracts categories and tags using aria-label attributes
 - **Content-focused link extraction** - Only gets links from blog content (not navigation/menus)
 
 ### ✅ Rich Data Extraction
+
 - **Complete blog data** - Title, content, author, date, categories, tags
 - **Character count** - Shows content length for each post
 - **Hyperlink extraction** - All links within blog content with text and URLs
 - **Clean output** - No duplicate debug messages
 
 ### ✅ WordPress-Ready Output
+
 - **WordPress XML (WXR) format** - Direct import to WordPress
 - **Organized link export** - Separate txt file with all hyperlinks by post
 - **Proper encoding** - Handles special characters and HTML correctly
@@ -58,7 +61,7 @@ playwright install chromium
 
 ## Sample Output
 
-```
+```bash
 [1/40] Processing: https://example.com/blog/post
 ✓ Success - Amazing Blog Post Title
   Content: 2,547 characters
