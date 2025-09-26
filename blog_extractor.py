@@ -31,7 +31,12 @@ from urllib.parse import urljoin, urlparse
 
 # Third-party imports
 import requests
-from bs4 import BeautifulSoup, Tag
+
+try:
+    from bs4 import BeautifulSoup, Tag
+except ImportError:
+    print("ERROR: BeautifulSoup4 is required. Install with: pip install beautifulsoup4")
+    raise
 
 # Playwright import
 try:
@@ -39,8 +44,9 @@ try:
     HAS_PLAYWRIGHT = True
 except ImportError:
     HAS_PLAYWRIGHT = False
-    print("ERROR: Playwright is required. Install with: pip install playwright && playwright install chromium")
-    exit(1)
+    sync_playwright = None  # Define for type checking
+    print("WARNING: Playwright not available. Some features may not work.")
+    # Don't exit for Streamlit Cloud compatibility
 
 
 class BlogExtractor:
@@ -61,33 +67,51 @@ class BlogExtractor:
         ]
 
     def fetch_content(self, url: str) -> Optional[str]:
-        """Fetch URL content using Playwright - handles all dynamic content"""
-        if not HAS_PLAYWRIGHT:
-            return None
+        """Fetch URL content using Playwright with fallback to requests"""
+        # Try Playwright first if available
+        if HAS_PLAYWRIGHT and sync_playwright is not None:
+            try:
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(headless=True)
+                    context = browser.new_context(
+                        user_agent=random.choice(self.user_agents),
+                        viewport={'width': 1920, 'height': 1080}
+                    )
+                    page = context.new_page()
 
+                    # Navigate and wait for content to load
+                    print("  Fetching with Playwright...")
+                    page.goto(url, wait_until='networkidle', timeout=30000)
+
+                    # Wait extra time for any dynamic content
+                    page.wait_for_timeout(3000)
+
+                    # Get page content
+                    html_content = page.content()
+                    browser.close()
+                    return html_content
+
+            except Exception as e:
+                print(f"  Playwright failed: {e}")
+                print("  Falling back to requests...")
+
+        # Fallback to requests (for Streamlit Cloud compatibility)
         try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
-                context = browser.new_context(
-                    user_agent=random.choice(self.user_agents),
-                    viewport={'width': 1920, 'height': 1080}
-                )
-                page = context.new_page()
+            headers = {
+                'User-Agent': random.choice(self.user_agents),
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+            }
 
-                # Navigate and wait for content to load
-                print("  Fetching with Playwright...")
-                page.goto(url, wait_until='networkidle', timeout=30000)
-
-                # Wait extra time for any dynamic content
-                page.wait_for_timeout(3000)
-
-                # Get page content
-                html_content = page.content()
-                browser.close()
-                return html_content
+            print("  Fetching with requests...")
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.text
 
         except Exception as e:
-            print(f"  Playwright failed: {e}")
+            print(f"  Requests also failed: {e}")
             return None
 
     def extract_categories(self, soup: BeautifulSoup) -> List[str]:
