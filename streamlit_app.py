@@ -241,8 +241,8 @@ def process_urls(urls: List[str], request_delay: int):
     for i, url in enumerate(urls):
         # Update progress
         progress = (i + 1) / len(urls)
-        progress_bar.progress(progress)
-        status_text.text(f"🔄 Processing {i + 1}/{len(urls)}: {url}")
+        progress_bar.progress(progress, text=f"Processing {i + 1}/{len(urls)} URLs")
+        status_text.text(f"🔄 Processing: {url}")
 
         try:
             # Extract blog data
@@ -250,28 +250,44 @@ def process_urls(urls: List[str], request_delay: int):
 
             if result and result.get('title'):
                 st.session_state.extraction_results.append(result)
-                status = "✅ Success"
+
+                # Display detailed success info
+                title = result.get('title', 'No title')[:60] + ('...' if len(result.get('title', '')) > 60 else '')
+                content_length = len(result.get('content', ''))
+                links_count = len(result.get('links', []))
+                categories = ', '.join(result.get('categories', []))
+
+                success_msg = f"✅ **{title}**"
+                details = f"Content: {content_length:,} chars | Links: {links_count} | Categories: {categories or 'None'}"
+
+                with results_container.container():
+                    st.success(success_msg)
+                    st.text(f"   {details}")
+                    st.text(f"   URL: {url}")
+                    st.write("---")
+
             else:
                 st.session_state.error_log.append({
                     'url': url,
                     'error': 'No content extracted'
                 })
-                status = "❌ Failed - No content"
+                with results_container.container():
+                    st.error(f"❌ Failed - No content extracted")
+                    st.text(f"   URL: {url}")
+                    st.write("---")
 
         except Exception as e:
             st.session_state.error_log.append({
                 'url': url,
                 'error': str(e)
             })
-            status = f"❌ Failed - {str(e)}"
+            with results_container.container():
+                st.error(f"❌ Failed - {str(e)}")
+                st.text(f"   URL: {url}")
+                st.write("---")
 
-        # Show live results
-        with results_container.container():
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.write(f"{i + 1}. {url}")
-            with col2:
-                st.write(status)
+        # Add small delay to make progress visible
+        time.sleep(0.5)
 
     # Processing complete
     elapsed_time = time.time() - start_time
