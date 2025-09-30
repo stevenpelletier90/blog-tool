@@ -184,10 +184,14 @@ class BlogExtractor:
 
                         # Navigate and wait for content to load
                         self._log("info", f"  Fetching with Playwright (attempt {attempt + 1}/{max_retries})...")
-                        page.goto(url, wait_until='networkidle', timeout=30000)
+                        page.goto(url, wait_until='domcontentloaded', timeout=60000)
 
-                        # Wait extra time for any dynamic content
-                        page.wait_for_timeout(3000)
+                        # Wait for blog content to render (Angular SPA)
+                        try:
+                            page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=10000)
+                        except:
+                            pass  # Continue anyway, content might use different selector
+                        page.wait_for_timeout(2000)  # Extra time for dynamic content
 
                         # Get page content
                         html_content = page.content()
@@ -253,10 +257,14 @@ class BlogExtractor:
 
                     # Navigate and wait for content to load
                     self._log("info", f"  Fetching with Playwright async (attempt {attempt + 1}/{max_retries})...")
-                    await page.goto(url, wait_until='networkidle', timeout=30000)
+                    await page.goto(url, wait_until='domcontentloaded', timeout=60000)
 
-                    # Wait extra time for any dynamic content
-                    await page.wait_for_timeout(3000)
+                    # Wait for blog content to render (Angular SPA)
+                    try:
+                        await page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=10000)
+                    except:
+                        pass  # Continue anyway, content might use different selector
+                    await page.wait_for_timeout(2000)  # Extra time for dynamic content
 
                     # Get page content
                     html_content = await page.content()
