@@ -46,7 +46,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 # Configure logging
 logging.basicConfig(
@@ -1001,8 +1001,26 @@ class BlogExtractor:
             'mysql_gmt': date_obj.strftime('%Y-%m-%d %H:%M:%S')          # Same for GMT (simplified)
         }
 
+    def _get_base_domain(self) -> str:
+        """Extract base domain from extracted blog posts"""
+        if not self.extracted_data:
+            return 'https://example.com'
+
+        # Get first successful post URL and extract domain
+        for post in self.extracted_data:
+            if post.get('status') == 'success' and post.get('url'):
+                url = post['url']
+                # Extract scheme and domain (e.g., https://www.devenerelaw.com)
+                parsed = urlparse(url)
+                base_domain = f"{parsed.scheme}://{parsed.netloc}"
+                return base_domain
+
+        return 'https://example.com'
+
     def _write_xml_header(self, f):
-        """Write WordPress XML header"""
+        """Write WordPress XML header with actual source domain"""
+        base_domain = self._get_base_domain()
+
         f.write('<?xml version="1.0" encoding="UTF-8" ?>\n')
         f.write('<rss version="2.0"\n')
         f.write('    xmlns:excerpt="http://wordpress.org/export/1.2/excerpt/"\n')
@@ -1012,13 +1030,13 @@ class BlogExtractor:
         f.write('    xmlns:wp="http://wordpress.org/export/1.2/">\n')
         f.write('<channel>\n')
         f.write('<title>Blog Export</title>\n')
-        f.write('<link>https://example.com</link>\n')
+        f.write(f'<link>{base_domain}</link>\n')
         f.write('<description>Exported blog posts</description>\n')
         f.write('<pubDate>Wed, 01 Jan 2025 00:00:00 +0000</pubDate>\n')
         f.write('<language>en-US</language>\n')
         f.write('<wp:wxr_version>1.2</wp:wxr_version>\n')
-        f.write('<wp:base_site_url>https://example.com</wp:base_site_url>\n')
-        f.write('<wp:base_blog_url>https://example.com</wp:base_blog_url>\n')
+        f.write(f'<wp:base_site_url>{base_domain}</wp:base_site_url>\n')
+        f.write(f'<wp:base_blog_url>{base_domain}</wp:base_blog_url>\n')
 
     def _write_xml_footer(self, f):
         """Write WordPress XML footer"""
