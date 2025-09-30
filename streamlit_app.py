@@ -247,7 +247,7 @@ def display_link_analysis():
 
     # Internal Links
     if internal:
-        with st.expander(f"📊 Internal Links ({len(internal)} unique)", expanded=True):
+        with st.expander(f"📊 Internal Links ({len(internal)} unique)", expanded=False):
             st.markdown("*These links point to the same domain as your blog posts*")
 
             # Sort by count descending - handle both old and new format
@@ -571,64 +571,87 @@ def display_results():
 
     st.markdown("### 📊 Extraction Results")
 
-    # Statistics
+    # Statistics (simplified to 4 metrics)
     success_count = len(st.session_state.extraction_results)
     duplicate_count = len(st.session_state.duplicate_log)
     failed_count = len(st.session_state.error_log)
     total_urls = success_count + duplicate_count + failed_count
     success_rate = (success_count / total_urls * 100) if total_urls > 0 else 0
 
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total URLs", total_urls)
     with col2:
         st.metric("Successful", success_count)
     with col3:
-        st.metric("Duplicates", duplicate_count)
-    with col4:
         st.metric("Failed", failed_count)
-    with col5:
+    with col4:
         st.metric("Success Rate", f"{success_rate:.1f}%")
 
-    # Results table with clickable blog post links
+    # Compact expandable post cards
     if st.session_state.extraction_results:
         st.subheader("✅ Successfully Extracted Posts")
 
         for idx, result in enumerate(st.session_state.extraction_results, 1):
-            with st.container():
-                col1, col2 = st.columns([5, 1])
+            title = result.get('title', 'N/A')
+            url = result.get('url', '')
+
+            # Compact summary line for collapsed view
+            summary_parts = []
+            if result.get('categories'):
+                cats = result['categories'][:2]
+                summary_parts.append(f"📁 {', '.join(cats)}" + (f" +{len(result['categories'])-2}" if len(result['categories']) > 2 else ""))
+            if result.get('tags'):
+                tags = result['tags'][:2]
+                summary_parts.append(f"🏷️ {', '.join(tags)}" + (f" +{len(result['tags'])-2}" if len(result['tags']) > 2 else ""))
+
+            link_count = len(result.get('links', []))
+            summary_parts.append(f"🔗 {link_count} link{'s' if link_count != 1 else ''}")
+
+            summary_text = " • ".join(summary_parts) if summary_parts else "No metadata"
+
+            # Expandable card for each post
+            with st.expander(f"**[{title}]({url})** • {summary_text}", expanded=False):
+                # Full details when expanded
+                col1, col2 = st.columns([3, 1])
+
                 with col1:
-                    # Clickable title linking to original blog post
-                    title = result.get('title', 'N/A')
-                    url = result.get('url', '')
-                    st.markdown(f"**{idx}. [{title}]({url})**")
-
                     # Metadata
-                    metadata_parts = []
+                    metadata = []
                     if result.get('author'):
-                        metadata_parts.append(f"👤 {result['author']}")
+                        metadata.append(f"👤 {result['author']}")
                     if result.get('date'):
-                        metadata_parts.append(f"📅 {result['date']}")
+                        metadata.append(f"📅 {result['date']}")
                     if result.get('platform'):
-                        metadata_parts.append(f"🌐 {result['platform'].title()}")
+                        metadata.append(f"🌐 {result['platform'].title()}")
+                    if result.get('content_length'):
+                        metadata.append(f"📝 {result['content_length']:,} chars")
 
-                    st.caption(" • ".join(metadata_parts))
+                    if metadata:
+                        st.caption(" • ".join(metadata))
 
-                    # Categories and tags
-                    info_parts = []
+                    # Categories (full list)
                     if result.get('categories'):
-                        info_parts.append(f"📁 {', '.join(result['categories'][:3])}" + (f" +{len(result['categories'])-3}" if len(result['categories']) > 3 else ""))
-                    if result.get('tags'):
-                        info_parts.append(f"🏷️ {', '.join(result['tags'][:3])}" + (f" +{len(result['tags'])-3}" if len(result['tags']) > 3 else ""))
+                        st.markdown(f"**📁 Categories:** {', '.join(result['categories'])}")
 
-                    if info_parts:
-                        st.caption(" | ".join(info_parts))
+                    # Tags (full list)
+                    if result.get('tags'):
+                        st.markdown(f"**🏷️ Tags:** {', '.join(result['tags'])}")
 
                 with col2:
                     st.metric("Content", f"{result.get('content_length', 0):,}")
-                    st.metric("Links", len(result.get('links', [])))
+                    st.metric("Links", link_count)
 
-                st.markdown("---")
+                # Show all links in this post with anchor text
+                if result.get('links'):
+                    st.markdown(f"**🔗 Links in this post ({link_count}):**")
+                    for link in result['links'][:20]:  # Show first 20 links
+                        link_text = link.get('text', 'No text')
+                        link_url = link.get('url', '')
+                        st.caption(f"• {link_text} → {link_url}")
+
+                    if len(result['links']) > 20:
+                        st.caption(f"... and {len(result['links']) - 20} more links")
 
     # Duplicate log
     if st.session_state.duplicate_log:
@@ -660,33 +683,22 @@ def provide_downloads():
         st.info("No content generated yet. Please run the extraction first.")
         return
 
-    # Two columns: XML and Links
-    col1, col2 = st.columns(2)
+    # Single centered download button for WordPress XML
+    final_xml = apply_replacements(st.session_state.xml_content)
+    label = "📄 Download WordPress XML"
+    if st.session_state.get('replacements'):
+        label += " (with modifications)"
 
-    with col1:
-        final_xml = apply_replacements(st.session_state.xml_content)
-        label = "📄 WordPress XML"
-        if st.session_state.get('replacements'):
-            label += " (modified)"
-        st.download_button(
-            label=label,
-            data=final_xml,
-            file_name=f"blog_posts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml",
-            mime="application/xml",
-            help="WordPress XML file ready for import",
-            use_container_width=True
-        )
+    st.download_button(
+        label=label,
+        data=final_xml,
+        file_name=f"blog_posts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml",
+        mime="application/xml",
+        help="WordPress XML file ready for import - contains all posts, categories, tags, and links",
+        use_container_width=True
+    )
 
-    with col2:
-        if st.session_state.get('links_content'):
-            st.download_button(
-                label="🔗 Extracted Links",
-                data=st.session_state.links_content,
-                file_name=f"extracted_links_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                mime="text/plain",
-                help="All hyperlinks found in blog content",
-                use_container_width=True
-            )
+    st.caption("💡 All links are included in the XML file and visible in the Link Analysis section above")
 
 
 def main():
