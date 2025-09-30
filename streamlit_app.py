@@ -201,26 +201,37 @@ def display_link_analysis():
         with st.expander(f"📊 Internal Links ({len(internal)} unique)", expanded=True):
             st.markdown("*These links point to the same domain as your blog posts*")
 
-            # Sort by count descending
-            sorted_links = sorted(internal.items(), key=lambda x: x[1]['count'], reverse=True)
+            # Sort by count descending - handle both old and new format
+            try:
+                sorted_links = sorted(internal.items(), key=lambda x: x[1]['count'] if isinstance(x[1], dict) else x[1], reverse=True)
+            except (KeyError, TypeError):
+                st.error("⚠️ Link data format mismatch. Please re-run the extraction.")
+                return
 
             for url, data in sorted_links[:30]:  # Show top 30
-                with st.container():
-                    col1, col2 = st.columns([5, 1])
-                    with col1:
-                        # Show anchor text(s)
-                        anchor_texts = data['texts'][:3]  # Show up to 3 different anchor texts
-                        st.markdown(f"**{anchor_texts[0]}**" + (f" *(+{len(data['texts'])-1} more)*" if len(data['texts']) > 1 else ""))
-                        st.caption(url if len(url) <= 80 else url[:80] + '...')
+                # Handle both old format (int) and new format (dict)
+                if isinstance(data, dict):
+                    with st.container():
+                        col1, col2 = st.columns([5, 1])
+                        with col1:
+                            # Show anchor text(s)
+                            anchor_texts = data.get('texts', ['No text'])[:3]
+                            st.markdown(f"**{anchor_texts[0]}**" + (f" *(+{len(data['texts'])-1} more)*" if len(data.get('texts', [])) > 1 else ""))
+                            st.caption(url if len(url) <= 80 else url[:80] + '...')
 
-                        # Show source blog posts
-                        sources = data['sources'][:3]
-                        source_text = ", ".join([f"[Post]({src})" for src in sources])
-                        if len(data['sources']) > 3:
-                            source_text += f" *+{len(data['sources'])-3} more*"
-                        st.markdown(f"Found in: {source_text}", unsafe_allow_html=True)
-                    with col2:
-                        st.metric("Uses", data['count'])
+                            # Show source blog posts
+                            sources = data.get('sources', [])[:3]
+                            if sources:
+                                source_text = ", ".join([f"[Post]({src})" for src in sources])
+                                if len(data.get('sources', [])) > 3:
+                                    source_text += f" *+{len(data.get('sources', []))-3} more*"
+                                st.markdown(f"Found in: {source_text}", unsafe_allow_html=True)
+                        with col2:
+                            st.metric("Uses", data.get('count', 0))
+                        st.markdown("---")
+                else:
+                    # Old format: just show count
+                    st.text(f"{url[:80]}... (×{data})")
                     st.markdown("---")
 
             if len(sorted_links) > 30:
@@ -231,26 +242,37 @@ def display_link_analysis():
         with st.expander(f"🌐 External Links ({len(external)} unique)"):
             st.markdown("*These links point to external websites*")
 
-            # Sort by count descending
-            sorted_links = sorted(external.items(), key=lambda x: x[1]['count'], reverse=True)
+            # Sort by count descending - handle both old and new format
+            try:
+                sorted_links = sorted(external.items(), key=lambda x: x[1]['count'] if isinstance(x[1], dict) else x[1], reverse=True)
+            except (KeyError, TypeError):
+                st.error("⚠️ Link data format mismatch. Please re-run the extraction.")
+                return
 
             for url, data in sorted_links[:30]:  # Show top 30
-                with st.container():
-                    col1, col2 = st.columns([5, 1])
-                    with col1:
-                        # Show anchor text(s)
-                        anchor_texts = data['texts'][:3]
-                        st.markdown(f"**{anchor_texts[0]}**" + (f" *(+{len(data['texts'])-1} more)*" if len(data['texts']) > 1 else ""))
-                        st.caption(url if len(url) <= 80 else url[:80] + '...')
+                # Handle both old format (int) and new format (dict)
+                if isinstance(data, dict):
+                    with st.container():
+                        col1, col2 = st.columns([5, 1])
+                        with col1:
+                            # Show anchor text(s)
+                            anchor_texts = data.get('texts', ['No text'])[:3]
+                            st.markdown(f"**{anchor_texts[0]}**" + (f" *(+{len(data['texts'])-1} more)*" if len(data.get('texts', [])) > 1 else ""))
+                            st.caption(url if len(url) <= 80 else url[:80] + '...')
 
-                        # Show source blog posts
-                        sources = data['sources'][:3]
-                        source_text = ", ".join([f"[Post]({src})" for src in sources])
-                        if len(data['sources']) > 3:
-                            source_text += f" *+{len(data['sources'])-3} more*"
-                        st.markdown(f"Found in: {source_text}", unsafe_allow_html=True)
-                    with col2:
-                        st.metric("Uses", data['count'])
+                            # Show source blog posts
+                            sources = data.get('sources', [])[:3]
+                            if sources:
+                                source_text = ", ".join([f"[Post]({src})" for src in sources])
+                                if len(data.get('sources', [])) > 3:
+                                    source_text += f" *+{len(data.get('sources', []))-3} more*"
+                                st.markdown(f"Found in: {source_text}", unsafe_allow_html=True)
+                        with col2:
+                            st.metric("Uses", data.get('count', 0))
+                        st.markdown("---")
+                else:
+                    # Old format: just show count
+                    st.text(f"{url[:80]}... (×{data})")
                     st.markdown("---")
 
             if len(sorted_links) > 30:

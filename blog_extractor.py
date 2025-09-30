@@ -272,6 +272,8 @@ class BlogExtractor:
     def extract_categories(self, soup: BeautifulSoup) -> List[str]:
         """Extract categories using Wix-specific selectors"""
         selectors = [
+            # Priority Honda/DealerOn - categories in specific blog content area
+            'div.blog__entry__content__categories a',
             # Wix-specific selectors based on your HTML
             'ul[aria-label="Post categories"] a',
             'section ul.pRGtWE li a',
@@ -280,6 +282,15 @@ class BlogExtractor:
             '.category a',
             '.categories a',
             'meta[name="article:section"]',
+        ]
+
+        # Common navigation/footer terms to exclude from categories
+        exclude_terms = [
+            'uncategorized', 'blog', 'all posts', 'home', 'about', 'contact',
+            'dealer', 'dealership', 'inventory', 'service', 'parts', 'hours',
+            'location', 'directions', 'finance', 'specials', 'reviews',
+            'privacy', 'sitemap', 'careers', 'testimonials', 'team',
+            'new inventory', 'used inventory', 'schedule service', 'apply for financing'
         ]
 
         categories = set()
@@ -296,8 +307,11 @@ class BlogExtractor:
                     else:
                         cat = element.get_text().strip()
 
-                    if cat and cat.lower() not in ['uncategorized', 'blog', 'all posts']:
-                        categories.add(cat)
+                    # Check if category is valid and not in exclude list
+                    if cat and cat.lower() not in exclude_terms:
+                        # Also exclude if it looks like a navigation link
+                        if len(cat.split()) <= 4:  # Categories are usually 1-4 words
+                            categories.add(cat)
 
         return list(categories)
 
@@ -366,7 +380,12 @@ class BlogExtractor:
     def extract_content(self, soup: BeautifulSoup) -> str:
         """Extract main post content with HTML structure preserved"""
         selectors = [
+            # Priority Honda/DealerOn - blog content area
+            'div.blog__entry__content > div',  # Direct child div contains the actual content
+            'div.blog__entry__content',
+            # Wix-specific
             'section[data-hook="post-description"]',
+            # WordPress and generic
             'article .entry-content',
             'article',
             '.post-content',
@@ -602,7 +621,12 @@ class BlogExtractor:
         """Extract hyperlinks from blog post content only (not navigation/menus)"""
         # First find the content area using same selectors as extract_content()
         content_selectors = [
+            # Priority Honda/DealerOn - blog content area
+            'div.blog__entry__content > div',
+            'div.blog__entry__content',
+            # Wix-specific
             'section[data-hook="post-description"]',
+            # WordPress and generic
             'article .entry-content',
             'article',
             '.post-content',
