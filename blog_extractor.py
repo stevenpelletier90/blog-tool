@@ -1078,10 +1078,13 @@ class BlogExtractor:
             now = datetime.now()
             date_obj = now
         else:
+            # Remove ordinal suffixes (1st, 2nd, 3rd, 4th, etc.) for parsing
+            date_string_cleaned = re.sub(r'(\d+)(st|nd|rd|th)', r'\1', date_string)
+
             # Try to parse common date formats
             date_formats = [
+                '%B %d, %Y',           # December 31, 2024 (after suffix removal)
                 '%b %d, %Y',           # Nov 27, 2023
-                '%B %d, %Y',           # November 27, 2023
                 '%Y-%m-%d',            # 2023-11-27
                 '%m/%d/%Y',            # 11/27/2023
                 '%d/%m/%Y',            # 27/11/2023
@@ -1090,7 +1093,7 @@ class BlogExtractor:
             date_obj = None
             for fmt in date_formats:
                 try:
-                    date_obj = datetime.strptime(date_string.strip(), fmt)
+                    date_obj = datetime.strptime(date_string_cleaned.strip(), fmt)
                     break
                 except ValueError:
                     continue
