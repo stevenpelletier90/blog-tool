@@ -1043,12 +1043,41 @@ class BlogExtractor:
         f.write('</channel>\n')
         f.write('</rss>\n')
 
+    def _convert_relative_urls_to_absolute(self, html_content: str, base_url: str) -> str:
+        """Convert all relative URLs in HTML content to absolute URLs"""
+        if not html_content:
+            return html_content
+
+        soup = BeautifulSoup(html_content, 'html.parser')
+
+        # Convert all relative URLs in <a> tags
+        for link in soup.find_all('a', href=True):
+            if isinstance(link, Tag):
+                href = link.get('href', '')
+                if href and not str(href).startswith(('http://', 'https://', 'mailto:', 'tel:', '#')):
+                    # Convert relative URL to absolute
+                    absolute_url = urljoin(base_url, str(href))
+                    link['href'] = absolute_url
+
+        # Convert all relative URLs in <img> tags
+        for img in soup.find_all('img', src=True):
+            if isinstance(img, Tag):
+                src = img.get('src', '')
+                if src and not str(src).startswith(('http://', 'https://', 'data:')):
+                    absolute_url = urljoin(base_url, str(src))
+                    img['src'] = absolute_url
+
+        return str(soup)
+
     def _write_xml_post(self, f, post: Dict[str, Any]):
         """Write single post to WordPress XML"""
         # Normalize unicode characters in all text fields
         title = self.normalize_unicode(post["title"])
         author = self.normalize_unicode(post["author"])
         content = self.normalize_unicode(post["content"])
+
+        # Convert relative URLs to absolute so WordPress can detect and replace them
+        content = self._convert_relative_urls_to_absolute(content, post["url"])
 
         # Parse and format the date properly
         date_formats = self.parse_and_format_date(post["date"])
