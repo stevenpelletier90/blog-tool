@@ -1,6 +1,6 @@
 # Blog Extractor - Professional Blog Migration Tool
 
-Production-ready tool to extract blog posts from Wix and other platforms, converting them to WordPress XML, JSON, or CSV formats with comprehensive features including duplicate detection, retry logic, platform auto-detection, and real-time progress tracking.
+Production-ready tool to extract blog posts from Wix, Webflow, and other platforms, converting them to WordPress XML, JSON, or CSV formats with comprehensive features including duplicate detection, retry logic, platform auto-detection, and real-time progress tracking.
 
 ## Quick Start
 
@@ -24,7 +24,7 @@ Production-ready tool to extract blog posts from Wix and other platforms, conver
 
 - **Smart fetching** - Uses Playwright locally (if available), falls back to requests for cloud deployment
 - **Cloud-ready** - Optimized for Streamlit Cloud deployment without Playwright dependencies
-- **Platform auto-detection** - Automatically detects Wix, WordPress, Medium, Squarespace, Blogger, or Generic
+- **Platform auto-detection** - Automatically detects Wix, Webflow, WordPress, Medium, Squarespace, Blogger, or Generic
 - **Duplicate detection** - Content hashing prevents processing the same post twice
 - **Smart logging** - Professional logging system with callback support for UI integration
 - **Content-focused link extraction** - Only gets links from blog content (not navigation/menus)

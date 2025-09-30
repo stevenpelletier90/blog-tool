@@ -149,6 +149,11 @@ class BlogExtractor:
             self._log("info", "  Detected platform: Wix (via data-hook)")
             return 'wix'
 
+        # Webflow - check for data-wf-domain or data-wf-page attributes
+        if soup.find(attrs={'data-wf-domain': True}) or soup.find(attrs={'data-wf-page': True}):
+            self._log("info", "  Detected platform: Webflow")
+            return 'webflow'
+
         # WordPress classes - check for any element with wp- prefix in class
         wp_elements = soup.find_all(class_=True)
         for elem in wp_elements:
@@ -388,6 +393,7 @@ class BlogExtractor:
         """Extract post title"""
         selectors = [
             'h1[data-hook="post-title"]',
+            'h1.slider-heading',  # Webflow
             'h1.H3vOVf',
             'h1',
             'title',
@@ -416,6 +422,9 @@ class BlogExtractor:
             'div.blog__article__content__text',  # THIS is the actual content!
             'div.blog__entry__content > div',  # Fallback
             'div.blog__entry__content',
+            # Webflow-specific (rich text editor content)
+            'div.rich-text-block',
+            'div.post-body-container',
             # Wix-specific
             'section[data-hook="post-description"]',
             # WordPress and generic
@@ -589,8 +598,10 @@ class BlogExtractor:
         selectors = [
             '[data-hook="user-name"]',
             'meta[name="author"]',
+            'div.text-blog',  # Webflow (sidebar author area)
             '.author',
             '.byline',
+            '.post-author',
         ]
 
         for selector in selectors:
@@ -627,9 +638,12 @@ class BlogExtractor:
         # Standard selectors
         selectors = [
             '[data-hook="time-ago"]',
+            'div.text-date-blog-post',  # Webflow
             'meta[property="article:published_time"]',
             '.date',
             '.published',
+            'time[datetime]',
+            'time',
         ]
 
         for selector in selectors:
@@ -657,6 +671,9 @@ class BlogExtractor:
             # Priority Honda/DealerOn - actual blog content area
             'div.blog__article__content__text',  # THIS is the actual content!
             'div.blog__entry__content > div:first-child',
+            # Webflow-specific (rich text editor content)
+            'div.rich-text-block',
+            'div.post-body-container',
             # Wix-specific
             'section[data-hook="post-description"]',
             # WordPress and generic
