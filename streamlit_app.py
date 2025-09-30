@@ -23,6 +23,24 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Hide anchor links from headers
+st.markdown("""
+<style>
+    /* Hide anchor links from headers */
+    .stMarkdown h1 a,
+    .stMarkdown h2 a,
+    .stMarkdown h3 a,
+    .stMarkdown h4 a {
+        display: none !important;
+    }
+
+    /* Better spacing for the app */
+    .block-container {
+        padding-top: 2rem;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 def setup_session_state():
     """Initialize session state variables"""
     if 'extraction_results' not in st.session_state:
@@ -140,43 +158,57 @@ def analyze_links(extraction_results: List[Dict]) -> Dict[str, Any]:
 
 def get_url_inputs():
     """Simple URL input with immediate extract button"""
-    st.header("📝 Step 1: Enter Your Blog URLs")
+    # Use markdown without anchor links
+    st.markdown("### 📝 Step 1: Enter Your Blog URLs")
+    st.caption("Paste your blog URLs below (one per line)")
 
-    # Simple text area
-    url_text = st.text_area(
-        "Blog URLs:",
-        height=200,
-        placeholder="https://example.com/blog/post1\nhttps://example.com/blog/post2\nhttps://example.com/blog/post3",
-        label_visibility="collapsed",
-        help="Paste your blog URLs here, one per line"
-    )
+    # Two column layout: text area + button
+    col1, col2 = st.columns([3, 1])
 
-    urls = []
-    if url_text:
-        urls = [url.strip() for url in url_text.strip().split('\n') if url.strip()]
+    with col1:
+        # Text area
+        url_text = st.text_area(
+            "Blog URLs:",
+            height=250,
+            placeholder="https://example.com/blog/post1\nhttps://example.com/blog/post2\nhttps://example.com/blog/post3",
+            label_visibility="collapsed"
+        )
 
-    # Validate URLs
-    valid_urls = validate_urls(urls)
+    with col2:
+        # Add some vertical spacing to align with text area
+        st.write("")
+        st.write("")
 
-    if valid_urls:
-        st.success(f"✅ {len(valid_urls)} URLs ready to extract")
+        # Always show button, but disable if no valid URLs
+        urls = []
+        if url_text:
+            urls = [url.strip() for url in url_text.strip().split('\n') if url.strip()]
 
-        # Add extract button RIGHT HERE
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            if st.button("🚀 **EXTRACT BLOG POSTS NOW**", type="primary", use_container_width=True, key="extract_button_top"):
-                return valid_urls, True  # Signal to start extraction
-        with col2:
-            st.caption("👇 or configure options below")
-    else:
-        st.info("👆 Paste your blog URLs above to get started")
+        valid_urls = validate_urls(urls)
 
-    return valid_urls, False  # Return URLs and button state
+        # Show button always, disable if no URLs
+        button_clicked = st.button(
+            "🚀 **EXTRACT POSTS**",
+            type="primary",
+            use_container_width=True,
+            disabled=len(valid_urls) == 0,
+            key="extract_button_top",
+            help="Click to start extracting blog posts"
+        )
+
+        if valid_urls:
+            st.success(f"✅ {len(valid_urls)} ready")
+        else:
+            st.info("👆 Paste URLs first")
+
+        st.caption("*or configure options below*")
+
+    return valid_urls, button_clicked
 
 
 def get_concurrent_settings() -> int:
     """Get concurrent processing settings"""
-    st.header("⚡ Step 2 (Optional): Performance Settings")
+    st.markdown("### ⚡ Step 2 (Optional): Performance Settings")
     st.caption("Skip this section to use default settings, or expand to boost speed")
 
     with st.expander("⚙️ Advanced Performance Options"):
@@ -211,7 +243,7 @@ def display_link_analysis():
     internal = analysis.get('internal', {})
     external = analysis.get('external', {})
 
-    st.header("🔗 Link Analysis")
+    st.markdown("### 🔗 Link Analysis")
 
     # Internal Links
     if internal:
@@ -304,7 +336,7 @@ def display_find_replace():
     if not internal:
         return
 
-    st.header("🔄 Fix Internal Links")
+    st.markdown("### 🔄 Fix Internal Links")
     st.write("Change domain names before downloading (useful when migrating blogs)")
 
     # Initialize replacements in session state
@@ -537,7 +569,7 @@ def display_results():
     if not st.session_state.extraction_complete:
         return
 
-    st.header("📊 Extraction Results")
+    st.markdown("### 📊 Extraction Results")
 
     # Statistics
     success_count = len(st.session_state.extraction_results)
@@ -621,7 +653,7 @@ def provide_downloads():
     if not st.session_state.extraction_complete:
         return
 
-    st.header("💾 Download Results")
+    st.markdown("### 💾 Download Results")
 
     # Check if we have content
     if not st.session_state.get('xml_content'):
@@ -680,7 +712,7 @@ def main():
         st.session_state.extraction_complete = False
 
         st.markdown("---")
-        st.header("🔄 Extracting Blog Posts...")
+        st.markdown("### 🔄 Extracting Blog Posts...")
 
         with st.spinner("Processing your blog posts..."):
             process_urls(urls, max_concurrent)
