@@ -661,9 +661,19 @@ class BlogExtractor:
         if not content_element:
             return []
 
-        # Extract links only from within the content area
+        # Remove tag/category/author sections from content element to avoid picking up their links
+        # Clone the content element to avoid modifying the original
+        from copy import copy
+        content_copy = copy(content_element)
+
+        # Remove these sections that contain metadata links (not content links)
+        for unwanted in content_copy.select('.blog__entry__content__tags, .blog__entry__content__categories, .blog__entry__content__author, nav, header, footer'):
+            if isinstance(unwanted, Tag):
+                unwanted.decompose()
+
+        # Extract links only from the cleaned content area
         links = []
-        for link in content_element.find_all('a', href=True):
+        for link in content_copy.find_all('a', href=True):
             if isinstance(link, Tag):
                 href_attr = link.get('href', '')
                 text = link.get_text().strip()

@@ -598,17 +598,27 @@ def display_results():
 
             # Compact summary line for collapsed view
             summary_parts = []
+
+            # Categories
             if result.get('categories'):
                 cats = result['categories'][:2]
                 summary_parts.append(f"📁 {', '.join(cats)}" + (f" +{len(result['categories'])-2}" if len(result['categories']) > 2 else ""))
+            else:
+                summary_parts.append("📁 No categories")
+
+            # Tags
             if result.get('tags'):
                 tags = result['tags'][:2]
                 summary_parts.append(f"🏷️ {', '.join(tags)}" + (f" +{len(result['tags'])-2}" if len(result['tags']) > 2 else ""))
 
+            # Links
             link_count = len(result.get('links', []))
-            summary_parts.append(f"🔗 {link_count} link{'s' if link_count != 1 else ''}")
+            if link_count > 0:
+                summary_parts.append(f"🔗 {link_count} link{'s' if link_count != 1 else ''}")
+            else:
+                summary_parts.append("🔗 No links")
 
-            summary_text = " • ".join(summary_parts) if summary_parts else "No metadata"
+            summary_text = " • ".join(summary_parts)
 
             # Expandable card for each post
             with st.expander(f"**[{title}]({url})** • {summary_text}", expanded=False):
@@ -633,10 +643,14 @@ def display_results():
                     # Categories (full list)
                     if result.get('categories'):
                         st.markdown(f"**📁 Categories:** {', '.join(result['categories'])}")
+                    else:
+                        st.markdown("**📁 Categories:** *No categories*")
 
                     # Tags (full list)
                     if result.get('tags'):
                         st.markdown(f"**🏷️ Tags:** {', '.join(result['tags'])}")
+                    else:
+                        st.markdown("**🏷️ Tags:** *No tags*")
 
                 with col2:
                     st.metric("Content", f"{result.get('content_length', 0):,}")
