@@ -462,6 +462,15 @@ class BlogExtractor:
         # Parse the HTML content
         soup = BeautifulSoup(html_content, 'html.parser')
 
+        # Mark button links with a special attribute before processing
+        for link in soup.find_all('a', class_=True):
+            if isinstance(link, Tag):
+                classes = link.get('class')
+                if classes and isinstance(classes, list):
+                    # Check if it's a button link (has 'btn' or 'button' in classes)
+                    if any('btn' in cls.lower() or 'button' in cls.lower() for cls in classes):
+                        link['data-is-button'] = 'true'
+
         # Define allowed tags (semantic HTML only, NO images or br tags)
         allowed_tags = {
             'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -471,7 +480,7 @@ class BlogExtractor:
 
         # Define which attributes to keep for specific tags
         allowed_attrs = {
-            'a': ['href']
+            'a': ['href', 'class', 'data-is-button']  # Allow class and button marker for links
         }
 
         # Remove unwanted elements but keep their content
@@ -485,8 +494,14 @@ class BlogExtractor:
         for element in soup.find_all():
             if isinstance(element, Tag):
                 if element.name in allowed_tags:
-                    # Keep only allowed attributes for this tag
-                    allowed = allowed_attrs.get(element.name, [])
+                    # For button links, preserve class and data-* attributes
+                    if element.name == 'a' and element.get('data-is-button') == 'true':
+                        # Keep all data-* attributes and class for buttons
+                        allowed = ['href', 'class'] + [attr for attr in element.attrs.keys() if attr.startswith('data-')]
+                    else:
+                        # Keep only allowed attributes for this tag
+                        allowed = allowed_attrs.get(element.name, [])
+
                     attrs_to_remove = [attr for attr in element.attrs.keys() if attr not in allowed]
                     for attr in attrs_to_remove:
                         del element.attrs[attr]
@@ -520,6 +535,20 @@ class BlogExtractor:
 
         # Parse the cleaned HTML
         soup = BeautifulSoup(html_content, 'html.parser')
+
+        # Extract button links from paragraphs and make them separate elements
+        for p in soup.find_all('p'):
+            if isinstance(p, Tag):
+                button_links = p.find_all('a', attrs={'data-is-button': 'true'})
+                if button_links:
+                    # Extract buttons from paragraph and insert them after the paragraph
+                    for button in button_links:
+                        if isinstance(button, Tag):
+                            # Remove button from paragraph
+                            button.extract()
+                            # Insert button as sibling after the paragraph
+                            p.insert_after(button)
+
         gutenberg_blocks = []
 
         # Process each top-level element
@@ -540,7 +569,23 @@ class BlogExtractor:
         """Convert a single HTML element to Gutenberg block"""
         tag_name = element.name.lower()
 
-        if tag_name == 'p':
+        if tag_name == 'a' and isinstance(element, Tag) and element.get('data-is-button') == 'true':
+            # Handle button links as WordPress button blocks
+            href = element.get('href', '')
+            text = element.get_text().strip()
+
+            # Remove the data-is-button marker attribute for output
+            element_copy = BeautifulSoup(str(element), 'html.parser').find('a')
+            if element_copy and isinstance(element_copy, Tag):
+                if 'data-is-button' in element_copy.attrs:
+                    del element_copy['data-is-button']
+                button_html = str(element_copy)
+            else:
+                button_html = str(element)
+
+            return f'<!-- wp:button -->\n<div class="wp-block-button">{button_html}</div>\n<!-- /wp:button -->'
+
+        elif tag_name == 'p':
             content = str(element)
             return f'<!-- wp:paragraph -->\n{content}\n<!-- /wp:paragraph -->'
 
