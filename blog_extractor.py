@@ -12,7 +12,14 @@ if sys.platform.startswith('win'):
     # Windows requires ProactorEventLoop for subprocess operations
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-# Check if async Playwright is available
+# Check if Playwright is available (both sync and async)
+try:
+    from playwright.sync_api import sync_playwright
+    HAS_PLAYWRIGHT = True
+except ImportError:
+    HAS_PLAYWRIGHT = False
+    sync_playwright = None  # type: ignore
+
 try:
     from playwright.async_api import async_playwright
     HAS_ASYNC_PLAYWRIGHT = True
@@ -397,8 +404,9 @@ class BlogExtractor:
     def extract_content(self, soup: BeautifulSoup) -> str:
         """Extract main post content with HTML structure preserved"""
         selectors = [
-            # Priority Honda/DealerOn - blog content area
-            'div.blog__entry__content > div',  # Direct child div contains the actual content
+            # Priority Honda/DealerOn - actual blog content area
+            'div.blog__article__content__text',  # THIS is the actual content!
+            'div.blog__entry__content > div',  # Fallback
             'div.blog__entry__content',
             # Wix-specific
             'section[data-hook="post-description"]',
@@ -635,12 +643,12 @@ class BlogExtractor:
         return datetime.now().strftime('%Y-%m-%d')
 
     def extract_links(self, soup: BeautifulSoup, base_url: str) -> List[Dict[str, str]]:
-        """Extract hyperlinks from blog post content only (not navigation/menus)"""
+        """Extract hyperlinks from blog post content only (not navigation/menus/tags)"""
         # First find the content area using same selectors as extract_content()
         content_selectors = [
-            # Priority Honda/DealerOn - blog content area
-            'div.blog__entry__content > div',
-            'div.blog__entry__content',
+            # Priority Honda/DealerOn - actual blog content area
+            'div.blog__article__content__text',  # THIS is the actual content!
+            'div.blog__entry__content > div:first-child',
             # Wix-specific
             'section[data-hook="post-description"]',
             # WordPress and generic
@@ -661,25 +669,34 @@ class BlogExtractor:
         if not content_element:
             return []
 
-        # Remove tag/category/author sections from content element to avoid picking up their links
-        # Clone the content element to avoid modifying the original
-        from copy import copy
-        content_copy = copy(content_element)
-
-        # Remove these sections that contain metadata links (not content links)
-        for unwanted in content_copy.select('.blog__entry__content__tags, .blog__entry__content__categories, .blog__entry__content__author, nav, header, footer'):
-            if isinstance(unwanted, Tag):
-                unwanted.decompose()
-
-        # Extract links only from the cleaned content area
+        # Extract links only from the content area
         links = []
-        for link in content_copy.find_all('a', href=True):
+        for link in content_element.find_all('a', href=True):
             if isinstance(link, Tag):
+                # Check if link is inside excluded sections (tags, categories, author, nav)
+                parent_classes = []
+                for parent in link.parents:
+                    if isinstance(parent, Tag):
+                        class_attr = parent.get('class')
+                        if class_attr and isinstance(class_attr, list):
+                            parent_classes.extend(class_attr)
+
+                # Skip if link is inside metadata sections
+                excluded_classes = ['blog__entry__content__tags', 'blog__entry__content__categories',
+                                   'blog__entry__content__author', 'tags', 'categories', 'author-info']
+                if any(exc in parent_classes for exc in excluded_classes):
+                    continue
+
                 href_attr = link.get('href', '')
                 text = link.get_text().strip()
 
                 if href_attr:  # Only process if href exists
                     href = str(href_attr)  # Convert to string
+
+                    # Skip metadata links by URL pattern
+                    if any(pattern in href.lower() for pattern in ['?tag=', '?author=', '?category=']):
+                        continue
+
                     # Convert relative URLs to absolute
                     if href.startswith('http'):
                         full_url = href
