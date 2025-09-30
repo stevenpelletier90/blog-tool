@@ -591,10 +591,7 @@ class BlogExtractor:
         tag_name = element.name.lower()
 
         if tag_name == 'a' and isinstance(element, Tag) and element.get('data-is-button') == 'true':
-            # Handle button links as WordPress button blocks
-            href = element.get('href', '')
-            text = element.get_text().strip()
-
+            # Handle button links as custom HTML blocks to preserve exact structure
             # Remove the data-is-button marker attribute for output
             element_copy = BeautifulSoup(str(element), 'html.parser').find('a')
             if element_copy and isinstance(element_copy, Tag):
@@ -604,7 +601,7 @@ class BlogExtractor:
             else:
                 button_html = str(element)
 
-            return f'<!-- wp:button -->\n<div class="wp-block-button">{button_html}</div>\n<!-- /wp:button -->'
+            return f'<!-- wp:html -->\n{button_html}\n<!-- /wp:html -->'
 
         elif tag_name == 'p':
             content = str(element)
