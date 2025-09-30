@@ -85,30 +85,49 @@ def validate_urls(urls: List[str]) -> List[str]:
     return valid_urls
 
 def analyze_links(extraction_results: List[Dict]) -> Dict[str, Any]:
-    """Analyze all extracted links and categorize them"""
-    all_links = []
+    """Analyze all extracted links and categorize them with anchor text"""
     source_domains = set()
+    internal_links = {}  # {url: {'count': N, 'texts': [anchor texts], 'sources': [blog post URLs]}}
+    external_links = {}
 
-    # Collect all links and source domains
+    # Collect source domains
     for result in extraction_results:
         if 'url' in result:
             source_domains.add(urlparse(result['url']).netloc)
+
+    # Analyze each link
+    for result in extraction_results:
+        post_url = result.get('url', 'Unknown')
         for link in result.get('links', []):
-            all_links.append(link['url'])
+            url = link['url']
+            text = link.get('text', 'No text')
 
-    # Count unique links
-    link_counts = Counter(all_links)
+            # Skip anchor-only links (#section)
+            if url.startswith('#'):
+                continue
 
-    # Categorize as internal or external
-    internal_links = {}
-    external_links = {}
+            # Categorize as internal or external
+            link_domain = urlparse(url).netloc
+            is_internal = link_domain in source_domains
 
-    for link, count in link_counts.items():
-        link_domain = urlparse(link).netloc
-        if link_domain in source_domains:
-            internal_links[link] = count
-        else:
-            external_links[link] = count
+            target_dict = internal_links if is_internal else external_links
+
+            if url not in target_dict:
+                target_dict[url] = {
+                    'count': 0,
+                    'texts': set(),
+                    'sources': set()
+                }
+
+            target_dict[url]['count'] += 1
+            target_dict[url]['texts'].add(text)
+            target_dict[url]['sources'].add(post_url)
+
+    # Convert sets to lists for serialization
+    for link_dict in [internal_links, external_links]:
+        for url in link_dict:
+            link_dict[url]['texts'] = list(link_dict[url]['texts'])
+            link_dict[url]['sources'] = list(link_dict[url]['sources'])
 
     return {
         'internal': internal_links,
@@ -119,12 +138,14 @@ def analyze_links(extraction_results: List[Dict]) -> Dict[str, Any]:
 def get_url_inputs() -> List[str]:
     """Simple URL input"""
     st.header("📝 Enter Your Blog URLs")
+    st.caption("📋 Paste your URLs below (one per line), then click the **Extract** button at the bottom")
 
     # Simple text area - that's it
     url_text = st.text_area(
-        "Paste your blog URLs here (one per line):",
+        "Blog URLs:",
         height=200,
-        placeholder="https://example.com/blog/post1\nhttps://example.com/blog/post2\nhttps://example.com/blog/post3"
+        placeholder="https://example.com/blog/post1\nhttps://example.com/blog/post2\nhttps://example.com/blog/post3",
+        label_visibility="collapsed"
     )
 
     urls = []
@@ -165,30 +186,75 @@ def get_concurrent_settings() -> int:
         return 1
 
 def display_link_analysis():
-    """Display unique internal links with counts"""
+    """Display unique internal and external links with anchor text"""
     if not st.session_state.get('link_analysis'):
         return
 
     analysis = st.session_state.link_analysis
     internal = analysis.get('internal', {})
+    external = analysis.get('external', {})
 
+    st.header("🔗 Link Analysis")
+
+    # Internal Links
     if internal:
-        with st.expander(f"📊 Internal Links Found ({len(internal)} unique)"):
-            st.write("These links point to the same domain as your blog posts:")
+        with st.expander(f"📊 Internal Links ({len(internal)} unique)", expanded=True):
+            st.markdown("*These links point to the same domain as your blog posts*")
 
             # Sort by count descending
-            sorted_links = sorted(internal.items(), key=lambda x: x[1], reverse=True)
+            sorted_links = sorted(internal.items(), key=lambda x: x[1]['count'], reverse=True)
 
-            # Display as simple table
-            for link, count in sorted_links[:20]:  # Show top 20
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    st.text(link[:80] + ('...' if len(link) > 80 else ''))
-                with col2:
-                    st.text(f"×{count}")
+            for url, data in sorted_links[:30]:  # Show top 30
+                with st.container():
+                    col1, col2 = st.columns([5, 1])
+                    with col1:
+                        # Show anchor text(s)
+                        anchor_texts = data['texts'][:3]  # Show up to 3 different anchor texts
+                        st.markdown(f"**{anchor_texts[0]}**" + (f" *(+{len(data['texts'])-1} more)*" if len(data['texts']) > 1 else ""))
+                        st.caption(url if len(url) <= 80 else url[:80] + '...')
 
-            if len(sorted_links) > 20:
-                st.write(f"... and {len(sorted_links) - 20} more")
+                        # Show source blog posts
+                        sources = data['sources'][:3]
+                        source_text = ", ".join([f"[Post]({src})" for src in sources])
+                        if len(data['sources']) > 3:
+                            source_text += f" *+{len(data['sources'])-3} more*"
+                        st.markdown(f"Found in: {source_text}", unsafe_allow_html=True)
+                    with col2:
+                        st.metric("Uses", data['count'])
+                    st.markdown("---")
+
+            if len(sorted_links) > 30:
+                st.info(f"... and {len(sorted_links) - 30} more internal links")
+
+    # External Links
+    if external:
+        with st.expander(f"🌐 External Links ({len(external)} unique)"):
+            st.markdown("*These links point to external websites*")
+
+            # Sort by count descending
+            sorted_links = sorted(external.items(), key=lambda x: x[1]['count'], reverse=True)
+
+            for url, data in sorted_links[:30]:  # Show top 30
+                with st.container():
+                    col1, col2 = st.columns([5, 1])
+                    with col1:
+                        # Show anchor text(s)
+                        anchor_texts = data['texts'][:3]
+                        st.markdown(f"**{anchor_texts[0]}**" + (f" *(+{len(data['texts'])-1} more)*" if len(data['texts']) > 1 else ""))
+                        st.caption(url if len(url) <= 80 else url[:80] + '...')
+
+                        # Show source blog posts
+                        sources = data['sources'][:3]
+                        source_text = ", ".join([f"[Post]({src})" for src in sources])
+                        if len(data['sources']) > 3:
+                            source_text += f" *+{len(data['sources'])-3} more*"
+                        st.markdown(f"Found in: {source_text}", unsafe_allow_html=True)
+                    with col2:
+                        st.metric("Uses", data['count'])
+                    st.markdown("---")
+
+            if len(sorted_links) > 30:
+                st.info(f"... and {len(sorted_links) - 30} more external links")
 
 def display_find_replace():
     """Simple find/replace interface for link modification"""
@@ -453,41 +519,63 @@ def display_results():
     with col5:
         st.metric("Success Rate", f"{success_rate:.1f}%")
 
-    # Results table
+    # Results table with clickable blog post links
     if st.session_state.extraction_results:
         st.subheader("✅ Successfully Extracted Posts")
 
-        results_data = []
-        for result in st.session_state.extraction_results:
-            results_data.append({
-                'Title': result.get('title', 'N/A')[:60] + ('...' if len(result.get('title', '')) > 60 else ''),
-                'Author': result.get('author', 'N/A'),
-                'Date': result.get('date', 'N/A'),
-                'Categories': ', '.join(result.get('categories', [])),
-                'Tags': ', '.join(result.get('tags', [])),
-                'Content Length': f"{len(result.get('content', ''))} chars",
-                'Links Found': len(result.get('links', []))
-            })
+        for idx, result in enumerate(st.session_state.extraction_results, 1):
+            with st.container():
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    # Clickable title linking to original blog post
+                    title = result.get('title', 'N/A')
+                    url = result.get('url', '')
+                    st.markdown(f"**{idx}. [{title}]({url})**")
 
-        st.dataframe(results_data, use_container_width=True)
+                    # Metadata
+                    metadata_parts = []
+                    if result.get('author'):
+                        metadata_parts.append(f"👤 {result['author']}")
+                    if result.get('date'):
+                        metadata_parts.append(f"📅 {result['date']}")
+                    if result.get('platform'):
+                        metadata_parts.append(f"🌐 {result['platform'].title()}")
+
+                    st.caption(" • ".join(metadata_parts))
+
+                    # Categories and tags
+                    info_parts = []
+                    if result.get('categories'):
+                        info_parts.append(f"📁 {', '.join(result['categories'][:3])}" + (f" +{len(result['categories'])-3}" if len(result['categories']) > 3 else ""))
+                    if result.get('tags'):
+                        info_parts.append(f"🏷️ {', '.join(result['tags'][:3])}" + (f" +{len(result['tags'])-3}" if len(result['tags']) > 3 else ""))
+
+                    if info_parts:
+                        st.caption(" | ".join(info_parts))
+
+                with col2:
+                    st.metric("Content", f"{result.get('content_length', 0):,}")
+                    st.metric("Links", len(result.get('links', [])))
+
+                st.markdown("---")
 
     # Duplicate log
     if st.session_state.duplicate_log:
         st.subheader("⊘ Duplicate Content")
         with st.expander(f"View {len(st.session_state.duplicate_log)} duplicates"):
             for dup in st.session_state.duplicate_log:
-                st.write(f"**Title:** {dup['title']}")
-                st.write(f"**URL:** {dup['url']}")
-                st.write("---")
+                st.markdown(f"**[{dup['title']}]({dup['url']})**")
+                st.caption(f"Skipped as duplicate content")
+                st.markdown("---")
 
     # Error log
     if st.session_state.error_log:
         st.subheader("❌ Failed URLs")
         with st.expander(f"View {len(st.session_state.error_log)} failed URLs"):
             for error in st.session_state.error_log:
-                st.write(f"**URL:** {error['url']}")
-                st.write(f"**Error:** {error['error']}")
-                st.write("---")
+                st.markdown(f"**[{error['url']}]({error['url']})**")
+                st.error(f"Error: {error['error']}")
+                st.markdown("---")
 
 def provide_downloads():
     """Provide download buttons for WordPress XML and links"""
@@ -529,13 +617,9 @@ def provide_downloads():
                 use_container_width=True
             )
 
-    # Preview options
+    # Preview WordPress XML only
     with st.expander("👀 Preview WordPress XML"):
         st.code(st.session_state.xml_content[:2000] + "..." if len(st.session_state.xml_content) > 2000 else st.session_state.xml_content, language="xml")
-
-    if st.session_state.get('links_content'):
-        with st.expander("👀 Preview Extracted Links"):
-            st.text(st.session_state.links_content[:2000] + "..." if len(st.session_state.links_content) > 2000 else st.session_state.links_content)
 
 def main():
     """Main application function"""
