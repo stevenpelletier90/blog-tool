@@ -1142,22 +1142,42 @@ class BlogExtractor:
         f.write('</rss>\n')
 
     def _convert_relative_urls_to_absolute(self, html_content: str, base_url: str) -> str:
-        """Convert all relative URLs in HTML content to absolute URLs"""
+        """Convert external relative URLs to absolute, keep internal links relative"""
         if not html_content:
             return html_content
 
         soup = BeautifulSoup(html_content, 'html.parser')
+        base_domain = urlparse(base_url).netloc
 
-        # Convert all relative URLs in <a> tags
+        # Process all URLs in <a> tags
         for link in soup.find_all('a', href=True):
             if isinstance(link, Tag):
                 href = link.get('href', '')
-                if href and not str(href).startswith(('http://', 'https://', 'mailto:', 'tel:', '#')):
-                    # Convert relative URL to absolute
-                    absolute_url = urljoin(base_url, str(href))
-                    link['href'] = absolute_url
+                href_str = str(href)
 
-        # Convert all relative URLs in <img> tags
+                # Skip anchors, mailto, tel
+                if href_str.startswith(('#', 'mailto:', 'tel:')):
+                    continue
+
+                # If it's already absolute
+                if href_str.startswith(('http://', 'https://')):
+                    parsed_href = urlparse(href_str)
+                    # If it's external, keep absolute; if internal, keep absolute (WordPress will handle)
+                    continue
+                else:
+                    # It's relative - convert to absolute to check if internal or external
+                    absolute_url = urljoin(base_url, href_str)
+                    parsed_absolute = urlparse(absolute_url)
+
+                    # Keep internal links relative, convert external to absolute
+                    if parsed_absolute.netloc == base_domain:
+                        # Internal link - keep relative
+                        continue
+                    else:
+                        # External link - convert to absolute
+                        link['href'] = absolute_url
+
+        # Convert all relative URLs in <img> tags to absolute
         for img in soup.find_all('img', src=True):
             if isinstance(img, Tag):
                 src = img.get('src', '')
