@@ -717,6 +717,13 @@ class BlogExtractor:
 
     def extract_date(self, soup: BeautifulSoup) -> str:
         """Extract publication date"""
+        # DealerInspire - div.meta-below-title > span.updated (Speck Chevrolet Prosser, Speck Buick GMC)
+        meta_below_title = soup.select_one('div.meta-below-title span.updated')
+        if meta_below_title and isinstance(meta_below_title, Tag):
+            date_text = meta_below_title.get_text().strip()
+            if date_text:
+                return date_text
+
         # Priority Honda/DealerOn-specific: look for date in span.blog__entry__content__author
         author_container = soup.select_one('span.blog__entry__content__author')
         if author_container and isinstance(author_container, Tag):
