@@ -471,6 +471,27 @@ class BlogExtractor:
                     if any('btn' in cls.lower() or 'button' in cls.lower() for cls in classes):
                         link['data-is-button'] = 'true'
 
+                        # Standardize button class to "btn btn-cta"
+                        link['class'] = 'btn btn-cta'
+
+                        # Add required data-dotagging attributes if not present
+                        href_attr = link.get('href')
+                        href = str(href_attr) if href_attr else ''
+                        if 'data-dotagging-link-url' not in link.attrs:
+                            link['data-dotagging-link-url'] = href
+                        if 'data-dotagging-event' not in link.attrs:
+                            link['data-dotagging-event'] = 'cta_interaction'
+                        if 'data-dotagging-product-name' not in link.attrs:
+                            link['data-dotagging-product-name'] = 'Website|Custom Content'
+                        if 'data-dotagging-event-action-result' not in link.attrs:
+                            link['data-dotagging-event-action-result'] = 'open'
+                        if 'data-dotagging-element-type' not in link.attrs:
+                            link['data-dotagging-element-type'] = 'body'
+                        if 'data-dotagging-element-order' not in link.attrs:
+                            link['data-dotagging-element-order'] = '0'
+                        if 'data-dotagging-element-subtype' not in link.attrs:
+                            link['data-dotagging-element-subtype'] = 'cta_button'
+
         # Define allowed tags (semantic HTML only, NO images or br tags)
         allowed_tags = {
             'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
