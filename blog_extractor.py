@@ -427,6 +427,8 @@ class BlogExtractor:
             'div.post-body-container',
             # Wix-specific
             'section[data-hook="post-description"]',
+            # DealerInspire - actual blog content only (excludes author/social/category metadata)
+            'div.entry',
             # WordPress and generic
             'article .entry-content',
             'article',
@@ -684,6 +686,8 @@ class BlogExtractor:
             'div.post-body-container',
             # Wix-specific
             'section[data-hook="post-description"]',
+            # DealerInspire - actual blog content only (excludes author/social/category links)
+            'div.entry',
             # WordPress and generic
             'article .entry-content',
             'article',
