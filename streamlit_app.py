@@ -49,14 +49,17 @@ def display_header():
     st.title("📰 Blog Extractor Tool")
     st.markdown("**Convert blog posts to WordPress XML format with comprehensive link extraction**")
 
-    st.info("💡 **Quick Start:** Paste your blog URLs below → Click 'Extract Blog Posts Now' → Download your WordPress XML")
+    st.info("💡 **Quick Start:** 1) Paste URLs → 2) Click the big blue button → 3) Download XML")
 
     with st.expander("📋 How to Use This Tool", expanded=False):
         st.markdown("""
         ### Instructions:
-        1. **Paste URLs**: Copy and paste your blog URLs into the text box (one per line)
-        2. **Click Extract**: Hit the big blue "Extract Blog Posts Now" button
-        3. **Download**: Get your WordPress XML file from the download section that appears
+        1. **Paste URLs**: Copy and paste your blog URLs into Step 1 (one per line)
+        2. **Click Extract**: Hit the big blue "EXTRACT BLOG POSTS NOW" button
+        3. **Download**: Scroll down to get your WordPress XML file
+
+        ### Optional:
+        - Expand Step 2 to enable concurrent processing for 3-5x faster extraction
 
         ### What This Tool Does:
         - ✅ Extracts blog content from any website (Wix, WordPress, Medium, etc.)
@@ -135,17 +138,17 @@ def analyze_links(extraction_results: List[Dict]) -> Dict[str, Any]:
         'source_domains': list(source_domains)
     }
 
-def get_url_inputs() -> List[str]:
-    """Simple URL input"""
-    st.header("📝 Enter Your Blog URLs")
-    st.caption("📋 Paste your URLs below (one per line), then click the **Extract** button at the bottom")
+def get_url_inputs():
+    """Simple URL input with immediate extract button"""
+    st.header("📝 Step 1: Enter Your Blog URLs")
 
-    # Simple text area - that's it
+    # Simple text area
     url_text = st.text_area(
         "Blog URLs:",
         height=200,
         placeholder="https://example.com/blog/post1\nhttps://example.com/blog/post2\nhttps://example.com/blog/post3",
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        help="Paste your blog URLs here, one per line"
     )
 
     urls = []
@@ -158,32 +161,46 @@ def get_url_inputs() -> List[str]:
     if valid_urls:
         st.success(f"✅ {len(valid_urls)} URLs ready to extract")
 
-    return valid_urls
+        # Add extract button RIGHT HERE
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            if st.button("🚀 **EXTRACT BLOG POSTS NOW**", type="primary", use_container_width=True, key="extract_button_top"):
+                return valid_urls, True  # Signal to start extraction
+        with col2:
+            st.caption("👇 or configure options below")
+    else:
+        st.info("👆 Paste your blog URLs above to get started")
+
+    return valid_urls, False  # Return URLs and button state
 
 
 def get_concurrent_settings() -> int:
     """Get concurrent processing settings"""
-    st.header("⚡ Performance")
+    st.header("⚡ Step 2 (Optional): Performance Settings")
+    st.caption("Skip this section to use default settings, or expand to boost speed")
 
-    enable_concurrent = st.checkbox(
-        "Enable concurrent processing (3-5x faster!)",
-        value=False,
-        help="Process multiple URLs simultaneously for major speed boost"
-    )
-
-    if enable_concurrent:
-        max_concurrent = st.slider(
-            "Max concurrent requests:",
-            min_value=2,
-            max_value=10,
-            value=5,
-            help="Higher = faster, but may overwhelm the server. 5 is recommended."
+    with st.expander("⚙️ Advanced Performance Options"):
+        enable_concurrent = st.checkbox(
+            "Enable concurrent processing (3-5x faster!)",
+            value=False,
+            help="Process multiple URLs simultaneously for major speed boost"
         )
-        st.info(f"💨 Will process {max_concurrent} URLs simultaneously")
-        return max_concurrent
-    else:
-        st.info("🐢 Sequential processing (one URL at a time)")
-        return 1
+
+        if enable_concurrent:
+            max_concurrent = st.slider(
+                "Max concurrent requests:",
+                min_value=2,
+                max_value=10,
+                value=5,
+                help="Higher = faster, but may overwhelm the server. 5 is recommended."
+            )
+            st.info(f"💨 Will process {max_concurrent} URLs simultaneously")
+            return max_concurrent
+        else:
+            st.info("🐢 Sequential processing (one URL at a time)")
+            return 1
+
+    return 1  # Default to sequential
 
 def display_link_analysis():
     """Display unique internal and external links with anchor text"""
@@ -651,28 +668,24 @@ def main():
     # Display header
     display_header()
 
-    # Get URLs
-    urls = get_url_inputs()
+    # Get URLs and check if extract button was clicked
+    urls, start_extraction = get_url_inputs()
 
-    # Get concurrent settings
+    # Get concurrent settings (optional, collapsed by default)
     max_concurrent = get_concurrent_settings()
 
-    # Main processing
-    st.markdown("---")  # Visual separator
-    st.header("🚀 Ready to Extract")
+    # Start extraction if button was clicked
+    if start_extraction and urls and not st.session_state.is_processing:
+        st.session_state.is_processing = True
+        st.session_state.extraction_complete = False
 
-    if urls and not st.session_state.is_processing:
-        st.success(f"✅ Ready to process {len(urls)} URL{'s' if len(urls) != 1 else ''}")
-        if st.button("🚀 **Extract Blog Posts Now**", type="primary", use_container_width=True):
-            st.session_state.is_processing = True
-            st.session_state.extraction_complete = False
+        st.markdown("---")
+        st.header("🔄 Extracting Blog Posts...")
 
-            with st.spinner("Starting extraction..."):
-                process_urls(urls, max_concurrent)
-    elif not urls:
-        st.info("👆 **Add URLs above** to get started")
-    else:
-        st.warning("⏳ Processing in progress...")
+        with st.spinner("Processing your blog posts..."):
+            process_urls(urls, max_concurrent)
+    elif st.session_state.is_processing:
+        st.warning("⏳ Extraction in progress...")
 
     # Display results
     display_results()
