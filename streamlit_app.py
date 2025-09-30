@@ -291,19 +291,25 @@ def process_urls(urls: List[str], max_concurrent: int = 1):
     # Initialize progress tracking
     progress_bar = st.progress(0)
     status_text = st.empty()
-    results_container = st.empty()
     log_container = st.empty()
 
     # Create callback for logging
     def logging_callback(level: str, message: str):
         """Callback to display logs in Streamlit - filters verbose messages"""
-        # Filter out verbose internal messages for cleaner UI
+        # Filter out verbose details - only show essential progress info
         skip_phrases = [
             "Fetching with",
             "attempt",
             "Retrying in",
             "Detected platform",
             "Platform:",
+            "URL:",
+            "Date:",
+            "Author:",
+            "Content:",
+            "Links:",
+            "Categories:",
+            "Tags:",
             "All",
             "failed",
         ]
@@ -317,6 +323,9 @@ def process_urls(urls: List[str], max_concurrent: int = 1):
                 st.error(f"🔴 {message}")
             elif level == 'warning':
                 st.warning(f"⚠️ {message}")
+            elif 'Success:' in message:
+                # Simplify success messages to just show title
+                st.success(f"✅ {message.replace('✓ Success: ', '')}")
             else:
                 st.info(f"ℹ️ {message}")
 
@@ -344,25 +353,18 @@ def process_urls(urls: List[str], max_concurrent: int = 1):
 
             if result and result.get('status') == 'success':
                 st.session_state.extraction_results.append(result)
-                with results_container.container():
-                    title = result.get('title', 'No title')[:60] + ('...' if len(result.get('title', '')) > 60 else '')
-                    st.success(f"✅ **{title}**")
 
             elif result and result.get('status') == 'duplicate':
                 st.session_state.duplicate_log.append({
                     'url': result.get('url', ''),
                     'title': result.get('title', 'Unknown')
                 })
-                with results_container.container():
-                    st.warning(f"⊘ Duplicate: {result.get('title', 'Unknown')}")
 
             else:
                 st.session_state.error_log.append({
                     'url': result.get('url', ''),
                     'error': result.get('error', 'Unknown error')
                 })
-                with results_container.container():
-                    st.error(f"❌ Failed: {result.get('error', 'Unknown error')}")
 
         elapsed = time.time() - start_time
         status_text.text(f"✅ Completed in {elapsed:.1f} seconds!")
@@ -383,50 +385,23 @@ def process_urls(urls: List[str], max_concurrent: int = 1):
                 if result and result.get('status') == 'success':
                     st.session_state.extraction_results.append(result)
 
-                    # Display detailed success info
-                    title = result.get('title', 'No title')[:60] + ('...' if len(result.get('title', '')) > 60 else '')
-                    content_length = len(result.get('content', ''))
-                    links_count = len(result.get('links', []))
-                    categories = ', '.join(result.get('categories', []))
-
-                    success_msg = f"✅ **{title}**"
-                    details = f"Content: {content_length:,} chars | Links: {links_count} | Categories: {categories or 'None'}"
-
-                    with results_container.container():
-                        st.success(success_msg)
-                        st.text(f"   {details}")
-                        st.text(f"   URL: {url}")
-                        st.write("---")
-
                 elif result and result.get('status') == 'duplicate':
                     st.session_state.duplicate_log.append({
                         'url': url,
                         'title': result.get('title', 'Unknown')
                     })
-                    with results_container.container():
-                        st.warning(f"⊘ Duplicate: {result.get('title', 'Unknown')}")
-                        st.text(f"   URL: {url}")
-                        st.write("---")
 
                 else:
                     st.session_state.error_log.append({
                         'url': url,
                         'error': result.get('error', 'No content extracted')
                     })
-                    with results_container.container():
-                        st.error(f"❌ Failed - {result.get('error', 'No content extracted')}")
-                        st.text(f"   URL: {url}")
-                        st.write("---")
 
             except Exception as e:
                 st.session_state.error_log.append({
                     'url': url,
                     'error': str(e)
                 })
-                with results_container.container():
-                    st.error(f"❌ Failed - {str(e)}")
-                    st.text(f"   URL: {url}")
-                    st.write("---")
 
             # Add small delay to make progress visible
             time.sleep(0.5)
