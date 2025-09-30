@@ -462,6 +462,11 @@ class BlogExtractor:
         # Parse the HTML content
         soup = BeautifulSoup(html_content, 'html.parser')
 
+        # Remove all HTML comments
+        from bs4 import Comment
+        for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+            comment.extract()
+
         # Mark button links with a special attribute before processing
         for link in soup.find_all('a', class_=True):
             if isinstance(link, Tag):
