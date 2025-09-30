@@ -300,7 +300,9 @@ class BlogExtractor:
                     if cat:
                         categories.add(cat)
 
-        # Meta tag fallback
+        # Meta tag fallback - ONLY use article-specific meta tags
+        # IMPORTANT: We explicitly DO NOT use meta[name="keywords"] because it contains
+        # site-wide SEO keywords (e.g., "Honda Dealer") that are NOT blog categories
         meta = soup.select_one('meta[name="article:section"]')
         if meta and isinstance(meta, Tag):
             content = meta.get('content')
@@ -331,7 +333,7 @@ class BlogExtractor:
         return filtered_categories
 
     def extract_tags(self, soup: BeautifulSoup) -> List[str]:
-        """Extract tags using Wix-specific selectors"""
+        """Extract tags from blog-specific areas only"""
         selectors = [
             # Priority Honda/DealerOn-specific selectors
             'ul.blog__entry__content__tags li a',
@@ -343,7 +345,8 @@ class BlogExtractor:
             # Generic fallbacks
             '.tag a',
             '.tags a',
-            'meta[name="keywords"]',
+            # NOTE: We do NOT use meta[name="keywords"] as it contains site-wide SEO terms
+            # (e.g., "Honda Dealer") that are NOT blog post tags
         ]
 
         tags = set()
@@ -351,21 +354,20 @@ class BlogExtractor:
             elements = soup.select(selector)
             for element in elements:
                 if isinstance(element, Tag):
-                    if element.name == 'meta':
-                        content = element.get('content')
-                        if content:
-                            tag_content = str(content)
-                            tag_parts = tag_content.split(',')
-                            new_tags = [t.strip() for t in tag_parts]
-                            for tag in new_tags:
-                                if tag:
-                                    tags.add(tag)
-                    else:
-                        tag = element.get_text().strip()
-                        if tag:
-                            tags.add(tag)
+                    tag = element.get_text().strip()
+                    if tag:
+                        tags.add(tag)
 
-        return list(tags)
+        # Filter out obvious non-tags (dealer/navigation terms)
+        exclude_terms = ['dealer', 'dealership', 'inventory', 'home', 'about', 'contact']
+        filtered_tags = []
+        for tag in tags:
+            tag_lower = tag.lower()
+            is_excluded = any(term in tag_lower for term in exclude_terms)
+            if not is_excluded and len(tag.split()) <= 5:  # Tags are usually short
+                filtered_tags.append(tag)
+
+        return filtered_tags
 
     def extract_title(self, soup: BeautifulSoup) -> str:
         """Extract post title"""
