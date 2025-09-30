@@ -5,9 +5,7 @@ Provides a user-friendly web interface for extracting blog posts and converting 
 """
 
 import streamlit as st
-import tempfile
 import time
-import os
 import asyncio
 from typing import List, Dict, Any
 from datetime import datetime
@@ -51,19 +49,22 @@ def display_header():
     st.title("📰 Blog Extractor Tool")
     st.markdown("**Convert blog posts to WordPress XML format with comprehensive link extraction**")
 
+    st.info("💡 **Quick Start:** Paste your blog URLs below → Click 'Extract Blog Posts Now' → Download your WordPress XML")
+
     with st.expander("📋 How to Use This Tool", expanded=False):
         st.markdown("""
         ### Instructions:
         1. **Paste URLs**: Copy and paste your blog URLs into the text box (one per line)
-        2. **Extract**: Click the "Extract Blog Posts" button
-        3. **Download**: Get your WordPress XML file and extracted links
+        2. **Click Extract**: Hit the big blue "Extract Blog Posts Now" button
+        3. **Download**: Get your WordPress XML file from the download section that appears
 
         ### What This Tool Does:
-        - ✅ Extracts blog content from any website (especially Wix)
+        - ✅ Extracts blog content from any website (Wix, WordPress, Medium, etc.)
         - ✅ Gets titles, content, authors, dates, categories, and tags
         - ✅ Finds all links within blog posts
         - ✅ Creates WordPress XML file for easy import
         - ✅ Works with JavaScript-heavy sites
+        - ✅ Supports concurrent processing (3-5x faster!)
         """)
 
 def get_sample_urls() -> List[str]:
@@ -138,22 +139,6 @@ def get_url_inputs() -> List[str]:
 
     return valid_urls
 
-def get_format_selection() -> str:
-    """Get export format selection from user"""
-    st.header("📦 Export Format")
-    format_choice = st.radio(
-        "Choose export format:",
-        options=["xml", "json", "csv", "all"],
-        format_func=lambda x: {
-            "xml": "📄 WordPress XML (for import)",
-            "json": "🔤 JSON (structured data)",
-            "csv": "📊 CSV (spreadsheet)",
-            "all": "📦 All formats"
-        }[x],
-        index=0,
-        horizontal=True
-    )
-    return format_choice
 
 def get_concurrent_settings() -> int:
     """Get concurrent processing settings"""
@@ -261,7 +246,7 @@ def apply_replacements(xml_content: str) -> str:
 
     return modified_content
 
-def process_urls(urls: List[str], export_format: str = 'xml', max_concurrent: int = 1):
+def process_urls(urls: List[str], max_concurrent: int = 1):
     """Process URLs with progress tracking (supports async concurrent mode)"""
     if not urls:
         st.error("❌ No valid URLs to process")
@@ -275,7 +260,22 @@ def process_urls(urls: List[str], export_format: str = 'xml', max_concurrent: in
 
     # Create callback for logging
     def logging_callback(level: str, message: str):
-        """Callback to display logs in Streamlit"""
+        """Callback to display logs in Streamlit - filters verbose messages"""
+        # Filter out verbose internal messages for cleaner UI
+        skip_phrases = [
+            "Fetching with",
+            "attempt",
+            "Retrying in",
+            "Detected platform",
+            "Platform:",
+            "All",
+            "failed",
+        ]
+
+        # Skip verbose messages unless it's an error
+        if level != 'error' and any(phrase in message for phrase in skip_phrases):
+            return
+
         with log_container.container():
             if level == 'error':
                 st.error(f"🔴 {message}")
@@ -291,7 +291,6 @@ def process_urls(urls: List[str], export_format: str = 'xml', max_concurrent: in
     st.session_state.extraction_results = []
     st.session_state.error_log = []
     st.session_state.duplicate_log = []
-    st.session_state.export_format = export_format
 
     start_time = time.time()
 
@@ -411,43 +410,22 @@ def process_urls(urls: List[str], export_format: str = 'xml', max_concurrent: in
         st.session_state.link_analysis = link_analysis
 
     # Generate output files
-    generate_output_files(extractor, export_format)
+    generate_output_files(extractor)
 
-def generate_output_files(extractor: BlogExtractor, export_format: str = 'xml'):
-    """Generate output files in selected format(s)"""
+def generate_output_files(extractor: BlogExtractor):
+    """Generate WordPress XML and links content - no files created"""
     try:
         # Set extracted data in extractor
         extractor.extracted_data = st.session_state.extraction_results
 
         # Generate XML content
-        if export_format in ['xml', 'all']:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.xml', delete=False, encoding='utf-8') as tmp_xml:
-                extractor.save_to_xml(os.path.basename(tmp_xml.name))
-                with open(tmp_xml.name, 'r', encoding='utf-8') as f:
-                    st.session_state.xml_content = f.read()
+        st.session_state.xml_content = extractor.get_xml_content()
 
-        # Generate JSON content
-        if export_format in ['json', 'all']:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as tmp_json:
-                extractor.save_to_json(os.path.basename(tmp_json.name))
-                with open(tmp_json.name, 'r', encoding='utf-8') as f:
-                    st.session_state.json_content = f.read()
-
-        # Generate CSV content
-        if export_format in ['csv', 'all']:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False, encoding='utf-8') as tmp_csv:
-                extractor.save_to_csv(os.path.basename(tmp_csv.name))
-                with open(tmp_csv.name, 'r', encoding='utf-8') as f:
-                    st.session_state.csv_content = f.read()
-
-        # Generate links content (always)
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as tmp_links:
-            extractor.save_links_to_txt(os.path.basename(tmp_links.name))
-            with open(tmp_links.name, 'r', encoding='utf-8') as f:
-                st.session_state.links_content = f.read()
+        # Generate links content
+        st.session_state.links_content = extractor.get_links_content()
 
     except Exception as e:
-        st.error(f"❌ Error generating output files: {e}")
+        st.error(f"❌ Error generating output content: {e}")
 
 def display_results():
     """Display extraction results and statistics"""
@@ -512,84 +490,48 @@ def display_results():
                 st.write("---")
 
 def provide_downloads():
-    """Provide download buttons for generated files"""
+    """Provide download buttons for WordPress XML and links"""
     if not st.session_state.extraction_complete:
         return
 
     st.header("💾 Download Results")
 
-    # Dynamic columns based on available formats
-    cols = []
-    if st.session_state.get('xml_content'):
-        cols.append('xml')
-    if st.session_state.get('json_content'):
-        cols.append('json')
-    if st.session_state.get('csv_content'):
-        cols.append('csv')
-    if st.session_state.get('links_content'):
-        cols.append('links')
-
-    # Only create columns if there's content to show
-    if not cols:
+    # Check if we have content
+    if not st.session_state.get('xml_content'):
         st.info("No content generated yet. Please run the extraction first.")
         return
 
-    columns = st.columns(len(cols))
+    # Two columns: XML and Links
+    col1, col2 = st.columns(2)
 
-    for idx, col_type in enumerate(cols):
-        with columns[idx]:
-            if col_type == 'xml' and st.session_state.xml_content:
-                final_xml = apply_replacements(st.session_state.xml_content)
-                label = "📄 WordPress XML"
-                if st.session_state.get('replacements'):
-                    label += " (modified)"
-                st.download_button(
-                    label=label,
-                    data=final_xml,
-                    file_name=f"blog_posts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml",
-                    mime="application/xml",
-                    help="WordPress XML file ready for import"
-                )
+    with col1:
+        final_xml = apply_replacements(st.session_state.xml_content)
+        label = "📄 WordPress XML"
+        if st.session_state.get('replacements'):
+            label += " (modified)"
+        st.download_button(
+            label=label,
+            data=final_xml,
+            file_name=f"blog_posts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml",
+            mime="application/xml",
+            help="WordPress XML file ready for import",
+            use_container_width=True
+        )
 
-            elif col_type == 'json' and st.session_state.json_content:
-                st.download_button(
-                    label="🔤 JSON",
-                    data=st.session_state.json_content,
-                    file_name=f"blog_posts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    mime="application/json",
-                    help="JSON structured data"
-                )
-
-            elif col_type == 'csv' and st.session_state.csv_content:
-                st.download_button(
-                    label="📊 CSV",
-                    data=st.session_state.csv_content,
-                    file_name=f"blog_posts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv",
-                    help="CSV spreadsheet format"
-                )
-
-            elif col_type == 'links' and st.session_state.links_content:
-                st.download_button(
-                    label="🔗 Links",
-                    data=st.session_state.links_content,
-                    file_name=f"extracted_links_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                    mime="text/plain",
-                    help="All hyperlinks found in blog content"
-                )
+    with col2:
+        if st.session_state.get('links_content'):
+            st.download_button(
+                label="🔗 Extracted Links",
+                data=st.session_state.links_content,
+                file_name=f"extracted_links_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                mime="text/plain",
+                help="All hyperlinks found in blog content",
+                use_container_width=True
+            )
 
     # Preview options
-    if st.session_state.get('xml_content'):
-        with st.expander("👀 Preview WordPress XML"):
-            st.code(st.session_state.xml_content[:2000] + "..." if len(st.session_state.xml_content) > 2000 else st.session_state.xml_content, language="xml")
-
-    if st.session_state.get('json_content'):
-        with st.expander("👀 Preview JSON"):
-            st.code(st.session_state.json_content[:2000] + "..." if len(st.session_state.json_content) > 2000 else st.session_state.json_content, language="json")
-
-    if st.session_state.get('csv_content'):
-        with st.expander("👀 Preview CSV"):
-            st.text(st.session_state.csv_content[:2000] + "..." if len(st.session_state.csv_content) > 2000 else st.session_state.csv_content)
+    with st.expander("👀 Preview WordPress XML"):
+        st.code(st.session_state.xml_content[:2000] + "..." if len(st.session_state.xml_content) > 2000 else st.session_state.xml_content, language="xml")
 
     if st.session_state.get('links_content'):
         with st.expander("👀 Preview Extracted Links"):
@@ -606,20 +548,25 @@ def main():
     # Get URLs
     urls = get_url_inputs()
 
-    # Get export format selection
-    export_format = get_format_selection()
-
     # Get concurrent settings
     max_concurrent = get_concurrent_settings()
 
     # Main processing
+    st.markdown("---")  # Visual separator
+    st.header("🚀 Ready to Extract")
+
     if urls and not st.session_state.is_processing:
-        if st.button("🚀 Extract Blog Posts", type="primary"):
+        st.success(f"✅ Ready to process {len(urls)} URL{'s' if len(urls) != 1 else ''}")
+        if st.button("🚀 **Extract Blog Posts Now**", type="primary", use_container_width=True):
             st.session_state.is_processing = True
             st.session_state.extraction_complete = False
 
             with st.spinner("Starting extraction..."):
-                process_urls(urls, export_format, max_concurrent)  # Pass format and concurrent settings
+                process_urls(urls, max_concurrent)
+    elif not urls:
+        st.info("👆 **Add URLs above** to get started")
+    else:
+        st.warning("⏳ Processing in progress...")
 
     # Display results
     display_results()

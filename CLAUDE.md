@@ -38,32 +38,32 @@ Production-ready tool to extract blog posts from Wix and other platforms, conver
 - **Gutenberg blocks** - Properly formatted WordPress blocks
 - **Unicode normalization** - Handles special characters correctly
 
-### ✅ Multiple Export Formats
+### ✅ WordPress-Ready Export
 
-- **WordPress XML (WXR)** - Direct import to WordPress
-- **JSON format** - Structured data for programmatic access
-- **CSV format** - Spreadsheet-compatible export
+- **WordPress XML (WXR)** - Direct import to WordPress with proper formatting
 - **Links export** - Separate txt file with all hyperlinks by post
 - **Proper encoding** - Handles special characters and HTML correctly
+- **Gutenberg blocks** - Properly formatted WordPress blocks
 
 ### ✅ Professional CLI
 
 - **Argparse interface** - Full command-line control
 - **Progress bars** - tqdm integration for visual progress
 - **Concurrent processing** - `--concurrent 5` for 3-5x speed boost!
-- **Format selection** - `--format xml|json|csv|all`
+- **Format selection** - `--format xml|json|csv|all` (CLI only)
 - **Configurable** - `--delay`, `--retries`, `--verbose`, `--quiet`
 - **Exit codes** - Proper success/failure reporting
 
 ### ✅ Beautiful Streamlit UI
 
-- **Web interface** - User-friendly browser-based UI
-- **Real-time logging** - See Playwright fetch attempts live
+- **Web interface** - User-friendly browser-based UI with clean, simple design
+- **Real-time progress** - Live updates showing extraction status
 - **Concurrent mode** - Checkbox + slider for 3-5x speed boost
-- **Format selector** - Radio buttons for XML/JSON/CSV/All
+- **WordPress XML export** - Optimized for WordPress migration
 - **Link analysis** - Internal vs external link detection
 - **Find/Replace** - Modify domain names before export
 - **Progress tracking** - Visual progress bars with statistics
+- **Download buttons** - Instant download of XML and extracted links
 
 ## File Structure
 
@@ -122,8 +122,6 @@ Failed: 2
 Success rate: 92.5%
 
 WordPress XML saved to: output/blog_posts.xml
-JSON saved to: output/blog_posts.json
-CSV saved to: output/blog_posts.csv
 Links saved to: output/extracted_links.txt
 ```
 
@@ -148,20 +146,20 @@ Double-click: run_extractor.bat
 ### Windows (Command Line)
 
 ```cmd
-# Basic extraction (XML)
+# Basic extraction (WordPress XML)
 blog-extractor-env\Scripts\python.exe extract.py
-
-# JSON format with verbose output
-blog-extractor-env\Scripts\python.exe extract.py --format json --verbose
-
-# All formats with custom delay/retries
-blog-extractor-env\Scripts\python.exe extract.py --format all --delay 3 --retries 5
 
 # Concurrent processing (3-5x faster!)
 blog-extractor-env\Scripts\python.exe extract.py --concurrent 5
 
-# Concurrent + all formats (fastest with maximum output)
-blog-extractor-env\Scripts\python.exe extract.py --concurrent 5 --format all
+# All formats (XML, JSON, CSV) for CLI users
+blog-extractor-env\Scripts\python.exe extract.py --format all --concurrent 5
+
+# Custom delay and retries
+blog-extractor-env\Scripts\python.exe extract.py --delay 3 --retries 5
+
+# Verbose output
+blog-extractor-env\Scripts\python.exe extract.py --verbose
 
 # Quiet mode (errors only)
 blog-extractor-env\Scripts\python.exe extract.py --quiet
@@ -179,10 +177,13 @@ blog-extractor-env\Scripts\streamlit run streamlit_app.py
 ### Mac/Linux
 
 ```bash
-# CLI
-blog-extractor-env/bin/python extract.py --format json --verbose
+# CLI - Basic WordPress XML extraction
+blog-extractor-env/bin/python extract.py
 
-# Streamlit
+# CLI - Concurrent processing for speed
+blog-extractor-env/bin/python extract.py --concurrent 5
+
+# Streamlit Web UI
 blog-extractor-env/bin/streamlit run streamlit_app.py
 ```
 
@@ -213,6 +214,6 @@ blog-extractor-env/bin/streamlit run streamlit_app.py
 - **Gutenberg blocks** - WordPress block format with proper HTML structure
 - **Unicode normalization** - Handles smart quotes, em dashes, accented characters
 - **Refactored architecture** - Small, focused methods for maintainability
-- **Export formats** - XML (WordPress WXR 1.2), JSON (structured), CSV (spreadsheet)
+- **Export formats** - XML (WordPress WXR 1.2), JSON/CSV available in CLI only
 - **Progress tracking** - tqdm for CLI, real-time updates for Streamlit
 - **Performance** - Concurrent mode: 40 URLs in ~15-20 seconds vs ~80 seconds sequential

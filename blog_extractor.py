@@ -29,6 +29,7 @@ REQUEST_DELAY = 2  # seconds between requests
 import csv
 import hashlib
 import html
+import io
 import json
 import logging
 import os
@@ -1070,6 +1071,88 @@ class BlogExtractor:
                     writer.writerow(csv_row)
 
         self._log("info", f"CSV saved to: {output_path}")
+
+    def get_xml_content(self) -> str:
+        """Generate and return WordPress XML content as string"""
+        output = io.StringIO()
+        self._write_xml_header(output)
+
+        for post in self.extracted_data:
+            if post['status'] == 'success':
+                self._write_xml_post(output, post)
+
+        self._write_xml_footer(output)
+        return output.getvalue()
+
+    def get_json_content(self) -> str:
+        """Generate and return JSON content as string"""
+        json_data = {
+            'export_date': datetime.now().isoformat(),
+            'total_posts': len([p for p in self.extracted_data if p['status'] == 'success']),
+            'posts': []
+        }
+
+        for post in self.extracted_data:
+            if post['status'] == 'success':
+                json_post = {
+                    'url': post['url'],
+                    'title': post['title'],
+                    'author': post['author'],
+                    'date': post['date'],
+                    'platform': post.get('platform', 'unknown'),
+                    'content': post['content'],
+                    'content_length': post['content_length'],
+                    'categories': post['categories'],
+                    'tags': post['tags'],
+                    'links': post.get('links', [])
+                }
+                json_data['posts'].append(json_post)
+
+        return json.dumps(json_data, ensure_ascii=False, indent=2)
+
+    def get_csv_content(self) -> str:
+        """Generate and return CSV content as string"""
+        output = io.StringIO()
+        fieldnames = ['url', 'title', 'author', 'date', 'platform', 'content_length',
+                     'categories', 'tags', 'links_count', 'content']
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for post in self.extracted_data:
+            if post['status'] == 'success':
+                csv_row = {
+                    'url': post['url'],
+                    'title': post['title'],
+                    'author': post['author'],
+                    'date': post['date'],
+                    'platform': post.get('platform', 'unknown'),
+                    'content_length': post['content_length'],
+                    'categories': ', '.join(post['categories']),
+                    'tags': ', '.join(post['tags']),
+                    'links_count': len(post.get('links', [])),
+                    'content': post['content']
+                }
+                writer.writerow(csv_row)
+
+        return output.getvalue()
+
+    def get_links_content(self) -> str:
+        """Generate and return links content as string"""
+        output = io.StringIO()
+        output.write("# Extracted Hyperlinks from Blog Posts\n")
+        output.write("# Format: [Post Title] Link Text -> URL\n\n")
+
+        for post in self.extracted_data:
+            if post['status'] == 'success' and post.get('links'):
+                output.write(f"## {post['title']}\n")
+                output.write(f"Source: {post['url']}\n\n")
+
+                for link in post['links']:
+                    output.write(f"{link['text']} -> {link['url']}\n")
+
+                output.write("\n" + "="*80 + "\n\n")
+
+        return output.getvalue()
 
 
 def main():
