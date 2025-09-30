@@ -88,14 +88,6 @@ def display_header():
         - ✅ Supports concurrent processing (3-5x faster!)
         """)
 
-def get_sample_urls() -> List[str]:
-    """Return sample URLs for testing"""
-    return [
-        "https://www.blog.kirkbrotherschevroletofvicksburg.com/2024/09/19/2024-chevy-silverado-hd-trucks/",
-        "https://www.blog.kirkbrotherschevroletofvicksburg.com/2024/09/18/2024-chevy-colorado-zr2/",
-        "https://www.blog.kirkbrotherschevroletofvicksburg.com/2024/09/17/2024-chevy-trailblazer/",
-    ]
-
 def validate_urls(urls: List[str]) -> List[str]:
     """Validate and clean URL list"""
     valid_urls = []
@@ -233,99 +225,6 @@ def get_concurrent_settings() -> int:
             return 1
 
     return 1  # Default to sequential
-
-def display_link_analysis():
-    """Display unique internal and external links with anchor text"""
-    if not st.session_state.get('link_analysis'):
-        return
-
-    analysis = st.session_state.link_analysis
-    internal = analysis.get('internal', {})
-    external = analysis.get('external', {})
-
-    st.markdown("### 🔗 Link Analysis")
-
-    # Internal Links
-    if internal:
-        with st.expander(f"📊 Internal Links ({len(internal)} unique)", expanded=False):
-            st.markdown("*These links point to the same domain as your blog posts*")
-
-            # Sort by count descending - handle both old and new format
-            try:
-                sorted_links = sorted(internal.items(), key=lambda x: x[1]['count'] if isinstance(x[1], dict) else x[1], reverse=True)
-            except (KeyError, TypeError):
-                st.error("⚠️ Link data format mismatch. Please re-run the extraction.")
-                return
-
-            for url, data in sorted_links[:30]:  # Show top 30
-                # Handle both old format (int) and new format (dict)
-                if isinstance(data, dict):
-                    with st.container():
-                        col1, col2 = st.columns([5, 1])
-                        with col1:
-                            # Show anchor text(s)
-                            anchor_texts = data.get('texts', ['No text'])[:3]
-                            st.markdown(f"**{anchor_texts[0]}**" + (f" *(+{len(data['texts'])-1} more)*" if len(data.get('texts', [])) > 1 else ""))
-                            st.caption(url if len(url) <= 80 else url[:80] + '...')
-
-                            # Show source blog posts
-                            sources = data.get('sources', [])[:3]
-                            if sources:
-                                source_text = ", ".join([f"[Post]({src})" for src in sources])
-                                if len(data.get('sources', [])) > 3:
-                                    source_text += f" *+{len(data.get('sources', []))-3} more*"
-                                st.markdown(f"Found in: {source_text}", unsafe_allow_html=True)
-                        with col2:
-                            st.metric("Uses", data.get('count', 0))
-                        st.markdown("---")
-                else:
-                    # Old format: just show count
-                    st.text(f"{url[:80]}... (×{data})")
-                    st.markdown("---")
-
-            if len(sorted_links) > 30:
-                st.info(f"... and {len(sorted_links) - 30} more internal links")
-
-    # External Links
-    if external:
-        with st.expander(f"🌐 External Links ({len(external)} unique)"):
-            st.markdown("*These links point to external websites*")
-
-            # Sort by count descending - handle both old and new format
-            try:
-                sorted_links = sorted(external.items(), key=lambda x: x[1]['count'] if isinstance(x[1], dict) else x[1], reverse=True)
-            except (KeyError, TypeError):
-                st.error("⚠️ Link data format mismatch. Please re-run the extraction.")
-                return
-
-            for url, data in sorted_links[:30]:  # Show top 30
-                # Handle both old format (int) and new format (dict)
-                if isinstance(data, dict):
-                    with st.container():
-                        col1, col2 = st.columns([5, 1])
-                        with col1:
-                            # Show anchor text(s)
-                            anchor_texts = data.get('texts', ['No text'])[:3]
-                            st.markdown(f"**{anchor_texts[0]}**" + (f" *(+{len(data['texts'])-1} more)*" if len(data.get('texts', [])) > 1 else ""))
-                            st.caption(url if len(url) <= 80 else url[:80] + '...')
-
-                            # Show source blog posts
-                            sources = data.get('sources', [])[:3]
-                            if sources:
-                                source_text = ", ".join([f"[Post]({src})" for src in sources])
-                                if len(data.get('sources', [])) > 3:
-                                    source_text += f" *+{len(data.get('sources', []))-3} more*"
-                                st.markdown(f"Found in: {source_text}", unsafe_allow_html=True)
-                        with col2:
-                            st.metric("Uses", data.get('count', 0))
-                        st.markdown("---")
-                else:
-                    # Old format: just show count
-                    st.text(f"{url[:80]}... (×{data})")
-                    st.markdown("---")
-
-            if len(sorted_links) > 30:
-                st.info(f"... and {len(sorted_links) - 30} more external links")
 
 def display_find_replace():
     """Simple find/replace interface for link modification"""
@@ -712,7 +611,7 @@ def provide_downloads():
         use_container_width=True
     )
 
-    st.caption("💡 All links are included in the XML file and visible in the Link Analysis section above")
+    st.caption("💡 All links are included in the XML file and visible in the Extraction Results section above")
 
 
 def main():
@@ -745,8 +644,7 @@ def main():
     # Display results
     display_results()
 
-    # Display link analysis and find/replace interface
-    display_link_analysis()
+    # Display find/replace interface (for modifying links before export)
     display_find_replace()
 
     # Provide downloads
