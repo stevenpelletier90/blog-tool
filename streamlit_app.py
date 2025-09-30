@@ -688,9 +688,6 @@ def provide_downloads():
                 use_container_width=True
             )
 
-    # Preview WordPress XML only
-    with st.expander("👀 Preview WordPress XML"):
-        st.code(st.session_state.xml_content[:2000] + "..." if len(st.session_state.xml_content) > 2000 else st.session_state.xml_content, language="xml")
 
 def main():
     """Main application function"""

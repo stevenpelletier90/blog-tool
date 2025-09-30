@@ -270,50 +270,65 @@ class BlogExtractor:
         return None
 
     def extract_categories(self, soup: BeautifulSoup) -> List[str]:
-        """Extract categories using Wix-specific selectors"""
-        selectors = [
-            # Priority Honda/DealerOn - categories in specific blog content area
-            'div.blog__entry__content__categories a',
-            # Wix-specific selectors based on your HTML
+        """Extract categories - only from blog-specific areas, not navigation"""
+        # Priority Honda/DealerOn: Look for categories ONLY within blog entry area
+        blog_entry = soup.select_one('div.blog__entry')
+        if blog_entry:
+            # Only look for categories within the blog entry container
+            category_elements = blog_entry.select('div.blog__entry__content__categories a')
+            if category_elements:
+                categories = set()
+                for elem in category_elements:
+                    if isinstance(elem, Tag):
+                        cat = elem.get_text().strip()
+                        if cat:
+                            categories.add(cat)
+                return list(categories)
+
+        # Wix-specific selectors (very targeted)
+        wix_selectors = [
             'ul[aria-label="Post categories"] a',
             'section ul.pRGtWE li a',
-            '.pRGtWE a',
-            # Generic fallbacks
-            '.category a',
-            '.categories a',
-            'meta[name="article:section"]',
         ]
 
-        # Common navigation/footer terms to exclude from categories
+        categories = set()
+        for selector in wix_selectors:
+            elements = soup.select(selector)
+            for element in elements:
+                if isinstance(element, Tag):
+                    cat = element.get_text().strip()
+                    if cat:
+                        categories.add(cat)
+
+        # Meta tag fallback
+        meta = soup.select_one('meta[name="article:section"]')
+        if meta and isinstance(meta, Tag):
+            content = meta.get('content')
+            if content:
+                cat = str(content).strip()
+                if cat:
+                    categories.add(cat)
+
+        # Filter out navigation/dealer terms
         exclude_terms = [
             'uncategorized', 'blog', 'all posts', 'home', 'about', 'contact',
             'dealer', 'dealership', 'inventory', 'service', 'parts', 'hours',
             'location', 'directions', 'finance', 'specials', 'reviews',
             'privacy', 'sitemap', 'careers', 'testimonials', 'team',
-            'new inventory', 'used inventory', 'schedule service', 'apply for financing'
+            'new inventory', 'used inventory', 'schedule service', 'financing',
+            'honda', 'roanoke', 'priority'  # Brand/location terms
         ]
 
-        categories = set()
-        for selector in selectors:
-            elements = soup.select(selector)
-            for element in elements:
-                if isinstance(element, Tag):
-                    if element.name == 'meta':
-                        content = element.get('content')
-                        if content:
-                            cat = str(content).strip()
-                        else:
-                            cat = ''
-                    else:
-                        cat = element.get_text().strip()
+        filtered_categories = []
+        for cat in categories:
+            cat_lower = cat.lower()
+            # Exclude if any exclude term is in the category
+            is_excluded = any(term in cat_lower for term in exclude_terms)
+            # Also exclude if it looks like a URL or link text
+            if not is_excluded and len(cat.split()) <= 3 and 'http' not in cat_lower:
+                filtered_categories.append(cat)
 
-                    # Check if category is valid and not in exclude list
-                    if cat and cat.lower() not in exclude_terms:
-                        # Also exclude if it looks like a navigation link
-                        if len(cat.split()) <= 4:  # Categories are usually 1-4 words
-                            categories.add(cat)
-
-        return list(categories)
+        return filtered_categories
 
     def extract_tags(self, soup: BeautifulSoup) -> List[str]:
         """Extract tags using Wix-specific selectors"""
