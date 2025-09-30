@@ -529,6 +529,11 @@ def provide_downloads():
     if st.session_state.get('links_content'):
         cols.append('links')
 
+    # Only create columns if there's content to show
+    if not cols:
+        st.info("No content generated yet. Please run the extraction first.")
+        return
+
     columns = st.columns(len(cols))
 
     for idx, col_type in enumerate(cols):

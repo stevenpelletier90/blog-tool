@@ -33,6 +33,7 @@ import json
 import logging
 import os
 import random
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -302,6 +303,9 @@ class BlogExtractor:
     def extract_tags(self, soup: BeautifulSoup) -> List[str]:
         """Extract tags using Wix-specific selectors"""
         selectors = [
+            # Priority Honda/DealerOn-specific selectors
+            'ul.blog__entry__content__tags li a',
+            'ul.blog__entry__content__tags li a strong',
             # Wix-specific selectors based on your HTML
             'nav[aria-label="Tags"] ul li a',
             '.zmug2R li a',
@@ -518,6 +522,17 @@ class BlogExtractor:
 
     def extract_author(self, soup: BeautifulSoup) -> str:
         """Extract author information"""
+        # Priority Honda/DealerOn-specific: look for author link in span.blog__entry__content__author
+        author_container = soup.select_one('span.blog__entry__content__author')
+        if author_container and isinstance(author_container, Tag):
+            # Find the author link (contains "See the ... blog entries")
+            author_link = author_container.select_one('a[href*="?author="]')
+            if author_link and isinstance(author_link, Tag):
+                author_text = author_link.get_text().strip()
+                if author_text:
+                    return author_text
+
+        # Standard selectors
         selectors = [
             '[data-hook="user-name"]',
             'meta[name="author"]',
@@ -542,6 +557,21 @@ class BlogExtractor:
 
     def extract_date(self, soup: BeautifulSoup) -> str:
         """Extract publication date"""
+        # Priority Honda/DealerOn-specific: look for date in span.blog__entry__content__author
+        author_container = soup.select_one('span.blog__entry__content__author')
+        if author_container and isinstance(author_container, Tag):
+            # Find all spans - the date is usually in the last one after the " / " separator
+            date_spans = author_container.find_all('span', class_='blog__entry__content__author')
+            for span in date_spans:
+                if isinstance(span, Tag):
+                    text = span.get_text().strip()
+                    # Check if it looks like a date (contains month name or numbers)
+                    if re.search(r'\d{1,2}', text) and not text.startswith('by'):
+                        # Likely a date
+                        if text and text != '/' and 'blog entries' not in text.lower():
+                            return text
+
+        # Standard selectors
         selectors = [
             '[data-hook="time-ago"]',
             'meta[property="article:published_time"]',

@@ -22,11 +22,13 @@ Production-ready tool to extract blog posts from Wix and other platforms, conver
 
 ### ✅ Advanced Extraction Engine
 
-- **Playwright-powered** - Handles JavaScript-heavy sites (especially Wix) with 3-retry exponential backoff
+- **Smart fetching** - Uses Playwright locally (if available), falls back to requests for cloud deployment
+- **Cloud-ready** - Optimized for Streamlit Cloud deployment without Playwright dependencies
 - **Platform auto-detection** - Automatically detects Wix, WordPress, Medium, Squarespace, Blogger, or Generic
 - **Duplicate detection** - Content hashing prevents processing the same post twice
 - **Smart logging** - Professional logging system with callback support for UI integration
 - **Content-focused link extraction** - Only gets links from blog content (not navigation/menus)
+- **3-retry backoff** - Exponential backoff retry logic for reliable extraction
 
 ### ✅ Rich Data Extraction
 
