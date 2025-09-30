@@ -635,10 +635,18 @@ class BlogExtractor:
                         if text and text != '/' and 'blog entries' not in text.lower():
                             return text
 
+        # Webflow-specific: Handle multiple div.text-date-blog-post elements (first is often empty)
+        webflow_dates = soup.select('div.text-date-blog-post')
+        for date_elem in webflow_dates:
+            if isinstance(date_elem, Tag):
+                date_text = date_elem.get_text().strip()
+                # Skip empty elements (w-dyn-bind-empty)
+                if date_text and len(date_text) > 3:
+                    return date_text
+
         # Standard selectors
         selectors = [
             '[data-hook="time-ago"]',
-            'div.text-date-blog-post',  # Webflow
             'meta[property="article:published_time"]',
             '.date',
             '.published',
