@@ -291,6 +291,19 @@ class BlogExtractor:
 
     def extract_categories(self, soup: BeautifulSoup) -> List[str]:
         """Extract categories - only from blog-specific areas, not navigation"""
+        # DealerInspire - div.meta-below-content with rel="category tag" links (Speck Buick GMC)
+        meta_below = soup.select_one('div.meta-below-content')
+        if meta_below:
+            category_links = meta_below.find_all('a', rel='category tag')
+            if category_links:
+                categories = set()
+                for elem in category_links:
+                    if isinstance(elem, Tag):
+                        cat = elem.get_text().strip()
+                        if cat:
+                            categories.add(cat)
+                return list(categories)
+
         # Priority Honda/DealerOn: Look for categories ONLY within blog entry area
         blog_entry = soup.select_one('div.blog__entry')
         if blog_entry:
@@ -299,6 +312,19 @@ class BlogExtractor:
             if category_elements:
                 categories = set()
                 for elem in category_elements:
+                    if isinstance(elem, Tag):
+                        cat = elem.get_text().strip()
+                        if cat:
+                            categories.add(cat)
+                return list(categories)
+
+        # Great Lakes Subaru / DealerOn v2 - div.categories structure
+        categories_div = soup.select_one('div.categories')
+        if categories_div:
+            category_links = categories_div.find_all('a')
+            if category_links:
+                categories = set()
+                for elem in category_links:
                     if isinstance(elem, Tag):
                         cat = elem.get_text().strip()
                         if cat:
