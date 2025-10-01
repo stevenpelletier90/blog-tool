@@ -1195,9 +1195,9 @@ class BlogExtractor:
                     absolute_url = urljoin(base_url, str(src))
                     img['src'] = absolute_url
 
-        # Use decode() with formatter=None to prevent BeautifulSoup from adding
+        # Use decode() with formatter="minimal" to prevent BeautifulSoup from adding
         # line breaks in long href attributes, which can cause WordPress to truncate URLs
-        return soup.decode(formatter=None)
+        return soup.decode(formatter="minimal")
 
     def _write_xml_post(self, f, post: Dict[str, Any]):
         """Write single post to WordPress XML"""
