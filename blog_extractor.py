@@ -812,7 +812,7 @@ class BlogExtractor:
                     return author
         return "Unknown Author"
 
-    def extract_date(self, soup: BeautifulSoup) -> str:
+    def extract_date(self, soup: BeautifulSoup, url: str = '') -> str:
         """Extract publication date"""
         # DealerInspire - div.meta-below-title > span.updated (Speck Chevrolet Prosser, Speck Buick GMC)
         meta_below_title = soup.select_one('div.meta-below-title span.updated')
@@ -861,14 +861,43 @@ class BlogExtractor:
                     content = element.get('content')
                     date_str = str(content) if content else ''
                 else:
-                    title_attr = element.get('title')
-                    if title_attr:
-                        date_str = str(title_attr)
+                    # For <time> elements, prioritize datetime attribute (already ISO-formatted)
+                    datetime_attr = element.get('datetime')
+                    if datetime_attr:
+                        date_str = str(datetime_attr)
                     else:
-                        date_str = element.get_text().strip()
+                        title_attr = element.get('title')
+                        if title_attr:
+                            date_str = str(title_attr)
+                        else:
+                            date_str = element.get_text().strip()
 
                 if date_str:
                     return date_str
+
+        # Fallback: Try to extract date from URL pattern (e.g., /2019/july/17/ or /2019/07/17/)
+        if url:
+            # Match patterns like /YYYY/MM/DD/ or /YYYY/month/DD/
+            url_date_pattern = r'/(\d{4})/([a-zA-Z]+|\d{1,2})/(\d{1,2})/'
+            match = re.search(url_date_pattern, url)
+            if match:
+                year, month, day = match.groups()
+                # Convert month name to number if needed
+                month_map = {
+                    'january': '01', 'february': '02', 'march': '03', 'april': '04',
+                    'may': '05', 'june': '06', 'july': '07', 'august': '08',
+                    'september': '09', 'october': '10', 'november': '11', 'december': '12'
+                }
+                if month.lower() in month_map:
+                    month = month_map[month.lower()]
+                # Format as YYYY-MM-DD
+                try:
+                    date_str = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+                    # Validate it's a real date
+                    datetime.strptime(date_str, '%Y-%m-%d')
+                    return date_str
+                except ValueError:
+                    pass
 
         return datetime.now().strftime('%Y-%m-%d')
 
@@ -983,7 +1012,7 @@ class BlogExtractor:
             self.seen_hashes.add(content_hash)
 
         author = self.extract_author(soup)
-        date = self.extract_date(soup)
+        date = self.extract_date(soup, url)
         categories = self.extract_categories(soup)
         tags = self.extract_tags(soup)
         links = self.extract_links(soup, url)
@@ -1045,7 +1074,7 @@ class BlogExtractor:
             self.seen_hashes.add(content_hash)
 
         author = self.extract_author(soup)
-        date = self.extract_date(soup)
+        date = self.extract_date(soup, url)
         categories = self.extract_categories(soup)
         tags = self.extract_tags(soup)
         links = self.extract_links(soup, url)
@@ -1180,6 +1209,8 @@ class BlogExtractor:
 
             # Try to parse common date formats
             date_formats = [
+                '%A, %d %B, %Y',       # Wednesday, 17 July, 2019
+                '%A, %B %d, %Y',       # Wednesday, July 17, 2019
                 '%B %d, %Y',           # December 31, 2024 (after suffix removal)
                 '%b %d, %Y',           # Nov 27, 2023
                 '%Y-%m-%d',            # 2023-11-27
