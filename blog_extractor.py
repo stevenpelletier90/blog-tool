@@ -523,7 +523,18 @@ class BlogExtractor:
                         if 'data-dotagging-element-subtype' not in link.attrs:
                             link['data-dotagging-element-subtype'] = 'cta_button'
 
-        # Define allowed tags (semantic HTML only, NO images or br tags)
+        # Replace <br> tags with spaces to prevent text from running together
+        # This is critical - br tags separate text but shouldn't create new paragraphs
+        for br in soup.find_all('br'):
+            if isinstance(br, Tag):
+                br.replace_with(' ')
+
+        # Remove all img tags completely (we don't want images)
+        for img in soup.find_all('img'):
+            if isinstance(img, Tag):
+                img.decompose()
+
+        # Define allowed tags (semantic HTML only, NO images)
         allowed_tags = {
             'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
             'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li',
@@ -561,21 +572,13 @@ class BlogExtractor:
                     # Remove disallowed tags but keep their content
                     element.unwrap()
 
-        # Remove empty paragraphs and those containing only br tags
+        # Remove empty paragraphs
         for p in soup.find_all('p'):
             if isinstance(p, Tag):
                 text_content = p.get_text().strip()
-                # Remove if empty or contains only whitespace/breaks
+                # Remove if empty or contains only whitespace
                 if not text_content or text_content == '':
                     p.decompose()
-                # Also remove paragraphs that only contain br tags
-                elif p.find_all('br') and not p.get_text().strip():
-                    p.decompose()
-
-        # Remove all br tags completely
-        for br in soup.find_all('br'):
-            if isinstance(br, Tag):
-                br.decompose()
 
         # Return cleaned HTML
         return str(soup).strip()
@@ -603,17 +606,47 @@ class BlogExtractor:
 
         gutenberg_blocks = []
 
+        # Group consecutive inline/text elements into paragraphs
+        current_paragraph_parts = []
+
         # Process each top-level element
         for element in soup.children:
             if isinstance(element, Tag) and element.name:
-                block_html = self.element_to_gutenberg_block(element)
-                if block_html:
-                    gutenberg_blocks.append(block_html)
-            elif not isinstance(element, Tag) and str(element).strip():  # Text node with content
-                # Wrap loose text in paragraph block
+                # Check if it's a block-level element
+                if element.name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre']:
+                    # Flush any accumulated inline content first
+                    if current_paragraph_parts:
+                        para_content = ''.join(str(p) for p in current_paragraph_parts)
+                        gutenberg_blocks.append(f'<!-- wp:paragraph -->\n<p>{para_content}</p>\n<!-- /wp:paragraph -->')
+                        current_paragraph_parts = []
+
+                    # Process the block element
+                    block_html = self.element_to_gutenberg_block(element)
+                    if block_html:
+                        gutenberg_blocks.append(block_html)
+                elif element.get('data-is-button') == 'true':
+                    # Button links are separate blocks
+                    if current_paragraph_parts:
+                        para_content = ''.join(str(p) for p in current_paragraph_parts)
+                        gutenberg_blocks.append(f'<!-- wp:paragraph -->\n<p>{para_content}</p>\n<!-- /wp:paragraph -->')
+                        current_paragraph_parts = []
+
+                    block_html = self.element_to_gutenberg_block(element)
+                    if block_html:
+                        gutenberg_blocks.append(block_html)
+                else:
+                    # Inline element - accumulate it
+                    current_paragraph_parts.append(element)
+            elif not isinstance(element, Tag):
+                # Text node - accumulate if not empty
                 text = str(element).strip()
                 if text:
-                    gutenberg_blocks.append(f'<!-- wp:paragraph -->\n<p>{text}</p>\n<!-- /wp:paragraph -->')
+                    current_paragraph_parts.append(element)
+
+        # Flush any remaining inline content
+        if current_paragraph_parts:
+            para_content = ''.join(str(p) for p in current_paragraph_parts)
+            gutenberg_blocks.append(f'<!-- wp:paragraph -->\n<p>{para_content}</p>\n<!-- /wp:paragraph -->')
 
         return '\n\n'.join(gutenberg_blocks)
 
