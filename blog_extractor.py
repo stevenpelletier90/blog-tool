@@ -448,6 +448,8 @@ class BlogExtractor:
             'div.blog__article__content__text',  # THIS is the actual content!
             'div.blog__entry__content > div',  # Fallback
             'div.blog__entry__content',
+            # Borgman Ford / DealerOn variant
+            'div.entry-content.text-content-container',
             # Webflow-specific (rich text editor content)
             'div.rich-text-block',
             'div.post-body-container',
@@ -485,6 +487,31 @@ class BlogExtractor:
 
     def clean_html(self, html_content: str) -> str:
         """Clean HTML by removing unwanted attributes and elements while preserving structure"""
+        # STEP 1: Fix character encoding issues
+        html_content = html_content.replace('\u2019', "'")  # Right single quote
+        html_content = html_content.replace('\u2018', "'")  # Left single quote
+        html_content = html_content.replace('\u201c', '"')  # Left double quote
+        html_content = html_content.replace('\u201d', '"')  # Right double quote
+        html_content = html_content.replace('\u2013', '-')  # En dash
+        html_content = html_content.replace('\u2014', '-')  # Em dash
+        html_content = html_content.replace('\u00a0', ' ')  # Non-breaking space
+
+        # STEP 2: Convert double <br> tags to paragraph breaks
+        # This handles the pattern: text<br/><br/>more text
+        # Replace with: </p><p>
+        html_content = re.sub(
+            r'<br\s*/?>\s*<br\s*/?>',
+            '</p><p>',
+            html_content,
+            flags=re.IGNORECASE
+        )
+
+        # STEP 3: Wrap the content in a paragraph if not already wrapped
+        if not html_content.strip().startswith('<p'):
+            html_content = '<p>' + html_content
+        if not html_content.strip().endswith('</p>'):
+            html_content = html_content + '</p>'
+
         # Parse the HTML content
         soup = BeautifulSoup(html_content, 'html.parser')
 
@@ -572,16 +599,53 @@ class BlogExtractor:
                     # Remove disallowed tags but keep their content
                     element.unwrap()
 
-        # Remove empty paragraphs
+        # Extract block-level elements (like headings) from paragraphs
+        # Headings should not be nested inside paragraphs
         for p in soup.find_all('p'):
             if isinstance(p, Tag):
+                # Find any headings or other block elements inside this paragraph
+                block_elements = p.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+                for block_elem in block_elements:
+                    if isinstance(block_elem, Tag):
+                        # Extract the block element and insert it before the paragraph
+                        block_elem.extract()
+                        p.insert_before(block_elem)
+
+        # Normalize whitespace in paragraphs and remove empty ones
+        from bs4 import NavigableString
+        for p in soup.find_all('p'):
+            if isinstance(p, Tag):
+                # Normalize whitespace in text nodes only, leave tags intact
+                for item in p.descendants:
+                    if isinstance(item, NavigableString) and not isinstance(item, Comment):
+                        # Replace multiple whitespace chars with single space
+                        normalized_text = re.sub(r'\s+', ' ', str(item))
+                        item.replace_with(normalized_text)
+
+                # Strip leading/trailing whitespace from the paragraph's text content
+                if p.contents:
+                    # Strip whitespace from first text node
+                    first = p.contents[0]
+                    if isinstance(first, NavigableString):
+                        first.replace_with(str(first).lstrip())
+                    # Strip whitespace from last text node
+                    last = p.contents[-1]
+                    if isinstance(last, NavigableString):
+                        last.replace_with(str(last).rstrip())
+
+                # Check if paragraph is empty after normalization
                 text_content = p.get_text().strip()
-                # Remove if empty or contains only whitespace
-                if not text_content or text_content == '':
+                if not text_content or len(text_content) < 2:
                     p.decompose()
 
-        # Return cleaned HTML
-        return str(soup).strip()
+        # Final cleanup: remove leading/trailing whitespace after paragraph tags
+        html_output = str(soup).strip()
+        # Remove whitespace right after <p> tags
+        html_output = re.sub(r'<p>\s+', '<p>', html_output)
+        # Remove whitespace right before </p> tags
+        html_output = re.sub(r'\s+</p>', '</p>', html_output)
+
+        return html_output
 
     def html_to_gutenberg(self, html_content: str) -> str:
         """Convert clean HTML to Gutenberg blocks format"""

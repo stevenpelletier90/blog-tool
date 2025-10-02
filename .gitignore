@@ -68,6 +68,9 @@ test-results/
 playwright-report/
 playwright/.cache/
 
+# Streamlit
+.streamlit/
+
 # Batch files (Windows specific)
 *.bat
 
