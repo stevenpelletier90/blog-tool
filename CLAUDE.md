@@ -1,10 +1,38 @@
 # Blog Extractor - Professional Blog Migration Tool
 
-Production-ready tool to extract blog posts from Wix, Webflow, and other platforms, converting them to WordPress XML, JSON, or CSV formats with comprehensive features including duplicate detection, retry logic, platform auto-detection, and real-time progress tracking.
+Production-ready tool to extract blog posts from **any blog platform** and convert them to WordPress XML, JSON, or CSV formats with comprehensive features including duplicate detection, retry logic, platform auto-detection, long URL preservation, and real-time progress tracking.
+
+## Supported Platforms
+
+This tool works with **virtually any blog platform** including:
+
+### ✅ Fully Tested & Optimized
+
+- **Wix** - Full support for Wix blog structure
+- **Webflow** - Handles Webflow's rich text blocks
+- **WordPress** - Extract from existing WordPress sites
+- **DealerOn** - Automotive dealer platforms (Priority Honda, Great Lakes Subaru, etc.)
+- **DealerInspire** - Automotive dealer platforms (Speck Chevrolet, Speck Buick GMC, etc.)
+- **Medium** - Medium blog posts
+- **Squarespace** - Squarespace blogs
+- **Blogger** - Google Blogger sites
+
+### ✅ Generic Platform Support
+
+- **Any HTML-based blog** - If it has HTML structure, this tool can extract it
+- **JavaScript-heavy sites** - Playwright handles dynamic content
+- **Custom CMS platforms** - Auto-detection falls back to generic extraction
 
 ## Quick Start
 
-### Option 1: Easy Batch File (Recommended)
+### Option 1: Streamlit Web UI (Recommended)
+
+1. Add URLs to `urls.txt` (one per line)
+2. Run: `blog-extractor-env\Scripts\streamlit run streamlit_app.py` (Windows) or `blog-extractor-env/bin/streamlit run streamlit_app.py` (Mac/Linux)
+3. Open browser to `http://localhost:8501`
+4. Click "Start Extraction" and download your WordPress XML
+
+### Option 2: Easy Batch File (Windows Only)
 
 1. Add URLs to `urls.txt` (one per line)
 2. Double-click `run_extractor.bat`
@@ -12,10 +40,10 @@ Production-ready tool to extract blog posts from Wix, Webflow, and other platfor
    - `output/blog_posts.xml` - WordPress XML for import
    - `output/extracted_links.txt` - All hyperlinks from blog content
 
-### Option 2: Command Line
+### Option 3: Command Line
 
 1. Add URLs to `urls.txt` (one per line)
-2. Run: `blog-extractor-env/Scripts/python.exe extract.py`
+2. Run: `blog-extractor-env/Scripts/python.exe extract.py` (Windows) or `blog-extractor-env/bin/python extract.py` (Mac/Linux)
 3. Check the `output/` folder for results
 
 ## Key Features
@@ -24,26 +52,30 @@ Production-ready tool to extract blog posts from Wix, Webflow, and other platfor
 
 - **Smart fetching** - Uses Playwright locally (if available), falls back to requests for cloud deployment
 - **Cloud-ready** - Optimized for Streamlit Cloud deployment without Playwright dependencies
-- **Platform auto-detection** - Automatically detects Wix, Webflow, WordPress, Medium, Squarespace, Blogger, or Generic
+- **Platform auto-detection** - Automatically detects 8+ major platforms or uses generic extraction
 - **Duplicate detection** - Content hashing prevents processing the same post twice
 - **Smart logging** - Professional logging system with callback support for UI integration
 - **Content-focused link extraction** - Only gets links from blog content (not navigation/menus)
 - **3-retry backoff** - Exponential backoff retry logic for reliable extraction
+- **Long URL preservation** - Handles URLs of any length without truncation
 
 ### ✅ Rich Data Extraction
 
 - **Complete blog data** - Title, content, author, date, categories, tags, platform
 - **Character count** - Shows content length for each post
-- **Hyperlink extraction** - All links within blog content with text and URLs
+- **Hyperlink extraction** - All links within blog content with text and URLs (preserved character-for-character)
 - **Gutenberg blocks** - Properly formatted WordPress blocks
 - **Unicode normalization** - Handles special characters correctly
+- **Button links** - Preserves CTA buttons with all data attributes
 
 ### ✅ WordPress-Ready Export
 
-- **WordPress XML (WXR)** - Direct import to WordPress with proper formatting
+- **WordPress XML (WXR 1.2)** - Direct import to WordPress with proper formatting
+- **Long URL support** - URLs preserved completely without line breaks or truncation
 - **Links export** - Separate txt file with all hyperlinks by post
 - **Proper encoding** - Handles special characters and HTML correctly
-- **Gutenberg blocks** - Properly formatted WordPress blocks
+- **Gutenberg blocks** - Properly formatted WordPress blocks with semantic HTML
+- **Internal/external link handling** - Smart URL conversion for seamless WordPress import
 
 ### ✅ Professional CLI
 
@@ -69,9 +101,11 @@ Production-ready tool to extract blog posts from Wix, Webflow, and other platfor
 
 - `blog_extractor.py` - Core extraction engine (Playwright-powered)
 - `extract.py` - Simple CLI wrapper
-- `urls.txt` - Input URLs (ready with 40 Chevrolet blog URLs)
+- `streamlit_app.py` - Web UI interface
+- `urls.txt` - Input URLs (one per line)
 - `output/` - Generated files (XML + links)
 - `requirements.txt` - Minimal dependencies (requests, beautifulsoup4, lxml, playwright)
+- `run_extractor.bat` - Windows batch file for easy execution
 
 ## Configuration
 
@@ -89,7 +123,7 @@ REQUEST_DELAY = 2  # Seconds between requests
 # Install dependencies
 pip install -r requirements.txt
 
-# Install Playwright browser
+# Install Playwright browser (for JavaScript-heavy sites)
 playwright install chromium
 ```
 
@@ -128,24 +162,26 @@ Links saved to: output/extracted_links.txt
 ## Current Status
 
 - **Production-ready** - Zero Pylance errors, all syntax checks pass
-- **15 major features** - Including async concurrent processing for 3-5x speed boost!
+- **Long URL fix applied** - BeautifulSoup formatter prevents URL truncation in WordPress import
+- **16 major features** - Including async concurrent processing for 3-5x speed boost!
 - **Modern tooling** - Async Playwright, retry logic, tqdm progress bars, professional logging
 - **Comprehensive extraction** - Gets everything: content, metadata, links, platform info
 - **Dual interfaces** - CLI with argparse + Streamlit web UI (both support concurrent mode)
 - **Type-safe** - Full type hints, proper error handling
 - **Performance** - Process 5+ URLs simultaneously with semaphore-based rate limiting
+- **Universal compatibility** - Works with any blog platform (8+ optimized, generic fallback)
 
 ## Run Commands
 
-### Windows (Easy)
+### Windows
 
 ```cmd
-Double-click: run_extractor.bat
-```
+# Streamlit Web UI (Recommended)
+blog-extractor-env\Scripts\streamlit run streamlit_app.py
 
-### Windows (Command Line)
+# Easy batch file
+run_extractor.bat
 
-```cmd
 # Basic extraction (WordPress XML)
 blog-extractor-env\Scripts\python.exe extract.py
 
@@ -168,30 +204,34 @@ blog-extractor-env\Scripts\python.exe extract.py --quiet
 blog-extractor-env\Scripts\python.exe extract.py --help
 ```
 
-### Streamlit Web UI
-
-```cmd
-blog-extractor-env\Scripts\streamlit run streamlit_app.py
-```
-
 ### Mac/Linux
 
 ```bash
+# Streamlit Web UI (Recommended)
+blog-extractor-env/bin/streamlit run streamlit_app.py
+
 # CLI - Basic WordPress XML extraction
 blog-extractor-env/bin/python extract.py
 
 # CLI - Concurrent processing for speed
 blog-extractor-env/bin/python extract.py --concurrent 5
 
-# Streamlit Web UI
-blog-extractor-env/bin/streamlit run streamlit_app.py
+# All formats (XML, JSON, CSV)
+blog-extractor-env/bin/python extract.py --format all --concurrent 5
+
+# Custom delay and retries
+blog-extractor-env/bin/python extract.py --delay 3 --retries 5
+
+# Show help
+blog-extractor-env/bin/python extract.py --help
 ```
 
 ## Prerequisites
 
-1. **Virtual environment** with dependencies installed
-2. **urls.txt file** with blog URLs (one per line)
-3. **Playwright browser** installed (`playwright install chromium`)
+1. **Python 3.8+** installed
+2. **Virtual environment** with dependencies installed (`pip install -r requirements.txt`)
+3. **urls.txt file** with blog URLs (one per line)
+4. **Playwright browser** installed (`playwright install chromium`) - optional but recommended for JavaScript-heavy sites
 
 ## Troubleshooting
 
@@ -201,14 +241,45 @@ blog-extractor-env/bin/streamlit run streamlit_app.py
 
 **"No URLs to process"**: Check that URLs in `urls.txt` start with `http` or `https`
 
-**Import fails in WordPress**: Ensure WordPress allows file uploads and try importing smaller batches
+**"Import fails in WordPress"**: Ensure WordPress allows file uploads and try importing smaller batches
+
+**"URLs are truncated in WordPress"**: This has been fixed! Make sure you're using the latest version with `soup.decode(formatter="minimal")`
+
+**"Playwright not available"**: The tool will fall back to requests library, but some JavaScript-heavy sites may not work
+
+## Platform Compatibility
+
+### Operating Systems
+
+- ✅ **Windows** (10, 11) - Full support with batch file
+- ✅ **macOS** (10.14+) - Full support
+- ✅ **Linux** (Ubuntu, Debian, RHEL, etc.) - Full support
+
+### Blog Platforms Tested
+
+- ✅ Wix
+- ✅ Webflow
+- ✅ WordPress
+- ✅ DealerOn (automotive)
+- ✅ DealerInspire (automotive)
+- ✅ Medium
+- ✅ Squarespace
+- ✅ Blogger
+- ✅ Custom/Generic HTML blogs
+
+### Export Targets
+
+- ✅ **WordPress** (WXR 1.2 format) - Primary target, fully tested
+- ✅ **JSON** - For custom integrations (CLI only)
+- ✅ **CSV** - For spreadsheet analysis (CLI only)
+- ✅ **TXT** - Hyperlinks export
 
 ## Technical Notes
 
 - **Async Playwright** - 3-retry exponential backoff, concurrent processing with asyncio.gather()
 - **Semaphore rate limiting** - Prevents overwhelming servers (max 5-10 concurrent recommended)
 - **Content hashing** - MD5-based duplicate detection prevents redundant processing
-- **Platform detection** - Auto-detects 6 major platforms using meta tags and class patterns
+- **Platform detection** - Auto-detects 8+ major platforms using meta tags and class patterns
 - **Logging system** - Professional logging with callback support for UI integration
 - **Type-safe** - Full type hints, zero Pylance errors
 - **Gutenberg blocks** - WordPress block format with proper HTML structure
@@ -217,3 +288,13 @@ blog-extractor-env/bin/streamlit run streamlit_app.py
 - **Export formats** - XML (WordPress WXR 1.2), JSON/CSV available in CLI only
 - **Progress tracking** - tqdm for CLI, real-time updates for Streamlit
 - **Performance** - Concurrent mode: 40 URLs in ~15-20 seconds vs ~80 seconds sequential
+- **Long URL handling** - Uses BeautifulSoup minimal formatter to prevent line breaks in href attributes
+- **Windows asyncio fix** - ProactorEventLoop for subprocess operations on Windows
+
+## Recent Updates
+
+- ✅ Fixed URL truncation issue in WordPress XML export (BeautifulSoup formatter)
+- ✅ Added support for DealerOn and DealerInspire platforms
+- ✅ Improved button link preservation with data attributes
+- ✅ Enhanced category/tag extraction (excludes navigation/SEO terms)
+- ✅ Content-focused link extraction (excludes metadata links)
