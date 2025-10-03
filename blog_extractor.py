@@ -1361,7 +1361,13 @@ class BlogExtractor:
         f.write(f'<wp:post_date_gmt><![CDATA[{date_formats["mysql_gmt"]}]]></wp:post_date_gmt>\n')
         f.write('<wp:comment_status><![CDATA[open]]></wp:comment_status>\n')
         f.write('<wp:ping_status><![CDATA[open]]></wp:ping_status>\n')
-        f.write('<wp:post_name><![CDATA[{}]]></wp:post_name>\n'.format(title.lower().replace(' ', '-')[:50]))
+        # Extract slug from source URL (last part of path, minus parent folders)
+        from urllib.parse import urlparse
+        parsed_url = urlparse(post["url"])
+        # Get the last segment of the path (e.g., /blog/2024/post-slug/ -> post-slug)
+        path_segments = [s for s in parsed_url.path.split('/') if s]
+        slug = path_segments[-1] if path_segments else title.lower().replace(' ', '-')
+        f.write('<wp:post_name><![CDATA[{}]]></wp:post_name>\n'.format(slug))
         f.write('<wp:status><![CDATA[publish]]></wp:status>\n')
         f.write('<wp:post_parent>0</wp:post_parent>\n')
         f.write('<wp:menu_order>0</wp:menu_order>\n')
