@@ -67,7 +67,7 @@ def display_header():
     st.title("📰 Blog Extractor Tool")
     st.markdown("**Convert blog posts to WordPress XML format with comprehensive link extraction**")
 
-    st.info("💡 **Quick Start:** 1) Paste URLs → 2) Click the big blue button → 3) Download XML")
+    st.info("💡 **Quick Start:** 1) Paste URLs → 2) Click Extract → 3) Download XML | ⚡ Concurrent processing enabled by default!")
 
     with st.expander("📋 How to Use This Tool", expanded=False):
         st.markdown("""
@@ -77,7 +77,7 @@ def display_header():
         3. **Download**: Scroll down to get your WordPress XML file
 
         ### Optional:
-        - Expand Step 2 to enable concurrent processing for 3-5x faster extraction
+        - Expand Step 2 to adjust concurrent processing (default: 5 workers)
 
         ### What This Tool Does:
         - ✅ Extracts blog content from any website (Wix, WordPress, Medium, etc.)
@@ -85,7 +85,7 @@ def display_header():
         - ✅ Finds all links within blog posts
         - ✅ Creates WordPress XML file for easy import
         - ✅ Works with JavaScript-heavy sites
-        - ✅ Supports concurrent processing (3-5x faster!)
+        - ✅ Concurrent processing enabled by default (3-5x faster!)
         """)
 
 def validate_urls(urls: List[str]) -> List[str]:
@@ -199,32 +199,27 @@ def get_url_inputs():
 
 
 def get_concurrent_settings() -> int:
-    """Get concurrent processing settings"""
+    """Get concurrent processing settings - concurrent is default for best performance"""
     st.markdown("### ⚡ Step 2 (Optional): Performance Settings")
-    st.caption("Skip this section to use default settings, or expand to boost speed")
+    st.caption("Concurrent processing is enabled by default for maximum speed (3-5x faster)")
 
     with st.expander("⚙️ Advanced Performance Options"):
-        enable_concurrent = st.checkbox(
-            "Enable concurrent processing (3-5x faster!)",
-            value=False,
-            help="Process multiple URLs simultaneously for major speed boost"
+        max_concurrent = st.slider(
+            "Concurrent requests:",
+            min_value=1,
+            max_value=10,
+            value=5,
+            help="1 = Sequential (slower), 5 = Recommended (3-5x faster), 10 = Maximum (may overwhelm server)"
         )
 
-        if enable_concurrent:
-            max_concurrent = st.slider(
-                "Max concurrent requests:",
-                min_value=2,
-                max_value=10,
-                value=5,
-                help="Higher = faster, but may overwhelm the server. 5 is recommended."
-            )
-            st.info(f"💨 Will process {max_concurrent} URLs simultaneously")
-            return max_concurrent
-        else:
+        if max_concurrent == 1:
             st.info("🐢 Sequential processing (one URL at a time)")
-            return 1
+        else:
+            st.info(f"💨 Processing {max_concurrent} URLs simultaneously (3-5x faster!)")
 
-    return 1  # Default to sequential
+        return max_concurrent
+
+    return 5  # Default to concurrent with 5 workers
 
 def display_find_replace():
     """Simple find/replace interface for link modification"""
