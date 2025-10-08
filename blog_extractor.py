@@ -506,13 +506,10 @@ class BlogExtractor:
             flags=re.IGNORECASE
         )
 
-        # STEP 3: Wrap the content in a paragraph if not already wrapped
-        if not html_content.strip().startswith('<p'):
-            html_content = '<p>' + html_content
-        if not html_content.strip().endswith('</p>'):
-            html_content = html_content + '</p>'
-
         # Parse the HTML content
+        # NOTE: We do NOT wrap content in <p> tags here because that destroys
+        # the structure of content that already has proper block elements (h1-h6, ul, ol, etc.)
+        # The html_to_gutenberg function handles unwrapped content properly
         soup = BeautifulSoup(html_content, 'html.parser')
 
         # Remove all HTML comments
