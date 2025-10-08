@@ -554,14 +554,19 @@ class BlogExtractor:
                 br.replace_with(' ')
 
         # Remove all img tags completely (we don't want images)
+        # Add space before removing to prevent text concatenation
         for img in soup.find_all('img'):
             if isinstance(img, Tag):
+                from bs4 import NavigableString
+                img.insert_before(NavigableString(' '))
+                img.insert_after(NavigableString(' '))
                 img.decompose()
 
         # Define allowed tags (semantic HTML only, NO images)
+        # Note: b/i tags are normalized to strong/em before this check
         allowed_tags = {
             'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-            'strong', 'b', 'em', 'i', 'u', 'ul', 'ol', 'li',
+            'strong', 'em', 'u', 'ul', 'ol', 'li',
             'blockquote', 'pre', 'code', 'a'
         }
 
@@ -571,11 +576,27 @@ class BlogExtractor:
         }
 
         # Remove unwanted elements but keep their content
+        # Add spaces when unwrapping to prevent text concatenation
         unwrap_tags = ['div', 'span', 'section', 'article', 'header', 'footer', 'nav']
+        from bs4 import NavigableString
         for tag_name in unwrap_tags:
             for tag in soup.find_all(tag_name):
                 if isinstance(tag, Tag):
+                    # Add space after the tag before unwrapping to prevent text merging
+                    # Only if the tag has content and isn't just whitespace
+                    if tag.get_text(strip=True):
+                        tag.insert_after(NavigableString(' '))
                     tag.unwrap()
+
+        # Normalize tags - convert presentational HTML to semantic HTML
+        # WordPress Gutenberg prefers semantic tags
+        for b_tag in soup.find_all('b'):
+            if isinstance(b_tag, Tag):
+                b_tag.name = 'strong'
+
+        for i_tag in soup.find_all('i'):
+            if isinstance(i_tag, Tag):
+                i_tag.name = 'em'
 
         # Clean attributes from all elements
         for element in soup.find_all():
@@ -594,6 +615,9 @@ class BlogExtractor:
                         del element.attrs[attr]
                 else:
                     # Remove disallowed tags but keep their content
+                    # Add space to prevent text concatenation
+                    if element.get_text(strip=True):
+                        element.insert_after(NavigableString(' '))
                     element.unwrap()
 
         # Extract block-level elements (like headings) from paragraphs
@@ -607,6 +631,22 @@ class BlogExtractor:
                         # Extract the block element and insert it before the paragraph
                         block_elem.extract()
                         p.insert_before(block_elem)
+
+        # Extract block-level elements from lists
+        # Lists (ul/ol) can ONLY contain <li> as direct children
+        for list_elem in soup.find_all(['ul', 'ol']):
+            if isinstance(list_elem, Tag):
+                # Find any block elements that are direct children (not nested in <li>)
+                invalid_children = []
+                for child in list_elem.children:
+                    if isinstance(child, Tag) and child.name not in ['li']:
+                        invalid_children.append(child)
+
+                # Extract invalid block elements and insert them after the list
+                for invalid_elem in invalid_children:
+                    if isinstance(invalid_elem, Tag):
+                        invalid_elem.extract()
+                        list_elem.insert_after(invalid_elem)
 
         # Normalize whitespace in paragraphs and remove empty ones
         from bs4 import NavigableString
@@ -762,7 +802,7 @@ class BlogExtractor:
         else:
             # For other elements, wrap in paragraph or return as-is
             content = str(element)
-            if tag_name in ['strong', 'b', 'em', 'i', 'u', 'a', 'code']:
+            if tag_name in ['strong', 'em', 'u', 'a', 'code']:
                 # Inline elements - wrap in paragraph
                 return f'<!-- wp:paragraph -->\n<p>{content}</p>\n<!-- /wp:paragraph -->'
             elif tag_name == 'br':
