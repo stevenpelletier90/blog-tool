@@ -198,7 +198,7 @@ def get_url_inputs():
     return valid_urls, button_clicked
 
 
-def get_concurrent_settings() -> int:
+def get_concurrent_settings() -> tuple[int, bool]:
     """Get concurrent processing settings - concurrent is default for best performance"""
     st.markdown("### ⚡ Step 2 (Optional): Performance Settings")
     st.caption("Concurrent processing is enabled by default for maximum speed (3-5x faster)")
@@ -217,9 +217,23 @@ def get_concurrent_settings() -> int:
         else:
             st.info(f"💨 Processing {max_concurrent} URLs simultaneously (3-5x faster!)")
 
-        return max_concurrent
+        st.markdown("---")
 
-    return 5  # Default to concurrent with 5 workers
+        # Link handling option
+        relative_links = st.checkbox(
+            "Use relative links in XML output",
+            value=False,
+            help="Keep internal links relative for easier domain migration (useful when moving to a new domain)"
+        )
+
+        if relative_links:
+            st.info("🔗 Internal links will be relative (e.g., /page instead of https://example.com/page)")
+        else:
+            st.info("🔗 All links will be absolute URLs (preserves exact source URLs)")
+
+        return max_concurrent, relative_links
+
+    return 5, False  # Default to concurrent with 5 workers, absolute links
 
 def display_find_replace():
     """Simple find/replace interface for link modification"""
@@ -277,7 +291,7 @@ def apply_replacements(xml_content: str) -> str:
 
     return modified_content
 
-def process_urls(urls: List[str], max_concurrent: int = 1):
+def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool = False):
     """Process URLs with progress tracking (supports async concurrent mode)"""
     if not urls:
         st.error("❌ No valid URLs to process")
@@ -325,7 +339,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1):
                 st.info(f"ℹ️ {message}")
 
     # Initialize extractor with callback
-    extractor = BlogExtractor(callback=logging_callback, verbose=False)
+    extractor = BlogExtractor(callback=logging_callback, verbose=False, relative_links=relative_links)
 
     # Reset session state
     st.session_state.extraction_results = []
@@ -596,7 +610,7 @@ def main():
     urls, start_extraction = get_url_inputs()
 
     # Get concurrent settings (optional, collapsed by default)
-    max_concurrent = get_concurrent_settings()
+    max_concurrent, relative_links = get_concurrent_settings()
 
     # Start extraction if button was clicked
     if start_extraction and urls and not st.session_state.is_processing:
@@ -607,7 +621,7 @@ def main():
         st.markdown("### 🔄 Extracting Blog Posts...")
 
         with st.spinner("Processing your blog posts..."):
-            process_urls(urls, max_concurrent)
+            process_urls(urls, max_concurrent, relative_links)
     elif st.session_state.is_processing:
         st.warning("⏳ Extraction in progress...")
 

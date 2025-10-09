@@ -84,13 +84,15 @@ class BlogExtractor:
         urls_file: str = URLS_FILE,
         output_dir: str = OUTPUT_DIR,
         callback: Optional[Callable[[str, str], None]] = None,
-        verbose: bool = True
+        verbose: bool = True,
+        relative_links: bool = False
     ):
         self.urls_file = urls_file
         self.output_dir = output_dir
         self.extracted_data: List[Dict[str, Any]] = []
         self.callback = callback  # Optional callback for UI updates (level, message)
         self.verbose = verbose
+        self.relative_links = relative_links  # Keep internal links relative in XML output
         self.seen_hashes: Set[str] = set()  # For duplicate detection
 
         # Create output directory if it doesn't exist
@@ -468,9 +470,19 @@ class BlogExtractor:
         for selector in selectors:
             content_elem = soup.select_one(selector)
             if content_elem:
-                # Clean up unwanted elements
+                # Clean up unwanted elements (breadcrumbs, navigation, title duplication)
                 for unwanted in content_elem.find_all(['script', 'style', 'noscript']):
                     unwanted.decompose()
+
+                # Remove breadcrumbs (common in custom HTML sites)
+                for breadcrumb in content_elem.find_all(class_='breadcrumbs'):
+                    breadcrumb.decompose()
+                for breadcrumb in content_elem.find_all('nav', attrs={'aria-label': 'Breadcrumb'}):
+                    breadcrumb.decompose()
+
+                # Remove duplicate title (if content_title div exists)
+                for title_div in content_elem.find_all(class_='content_title'):
+                    title_div.decompose()
 
                 # Get HTML content instead of just text
                 html_content = content_elem.decode_contents()
@@ -982,9 +994,10 @@ class BlogExtractor:
                         if class_attr and isinstance(class_attr, list):
                             parent_classes.extend(class_attr)
 
-                # Skip if link is inside metadata sections
+                # Skip if link is inside metadata sections or breadcrumbs
                 excluded_classes = ['blog__entry__content__tags', 'blog__entry__content__categories',
-                                   'blog__entry__content__author', 'tags', 'categories', 'author-info']
+                                   'blog__entry__content__author', 'tags', 'categories', 'author-info',
+                                   'breadcrumbs', 'breadcrumb']
                 if any(exc in parent_classes for exc in excluded_classes):
                     continue
 
@@ -1317,7 +1330,15 @@ class BlogExtractor:
         f.write('</rss>\n')
 
     def _convert_relative_urls_to_absolute(self, html_content: str, base_url: str) -> str:
-        """Convert external relative URLs to absolute, keep internal links relative"""
+        """Convert URLs based on relative_links setting
+
+        If relative_links=True:
+            - Keep internal links relative (for WordPress migration)
+            - Convert external relative links to absolute
+            - Convert internal absolute links to relative
+        If relative_links=False:
+            - Convert all relative links to absolute (for preservation)
+        """
         if not html_content:
             return html_content
 
@@ -1337,20 +1358,27 @@ class BlogExtractor:
                 # If it's already absolute
                 if href_str.startswith(('http://', 'https://')):
                     parsed_href = urlparse(href_str)
-                    # If it's external, keep absolute; if internal, keep absolute (WordPress will handle)
+
+                    if self.relative_links and parsed_href.netloc == base_domain:
+                        # Convert internal absolute URLs to relative paths
+                        relative_path = parsed_href.path
+                        if parsed_href.query:
+                            relative_path += '?' + parsed_href.query
+                        if parsed_href.fragment:
+                            relative_path += '#' + parsed_href.fragment
+                        link['href'] = relative_path
+                    # External absolute URLs: keep as-is
                     continue
                 else:
-                    # It's relative - convert to absolute to check if internal or external
-                    absolute_url = urljoin(base_url, href_str)
-                    parsed_absolute = urlparse(absolute_url)
-
-                    # Keep internal links relative, convert external to absolute
-                    if parsed_absolute.netloc == base_domain:
-                        # Internal link - keep relative
-                        continue
-                    else:
-                        # External link - convert to absolute
+                    # It's relative - handle based on relative_links setting
+                    if not self.relative_links:
+                        # Convert all relative links to absolute
+                        absolute_url = urljoin(base_url, href_str)
                         link['href'] = absolute_url
+                    else:
+                        # Keep relative links as-is (they're already relative)
+                        # Just ensure they're properly formatted
+                        continue
 
         # Convert all relative URLs in <img> tags to absolute
         for img in soup.find_all('img', src=True):

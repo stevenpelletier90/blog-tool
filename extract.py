@@ -81,6 +81,11 @@ Examples:
         default=1,
         help='Max concurrent requests (1=sequential, 5=recommended max, default: 1)'
     )
+    parser.add_argument(
+        '--relative-links',
+        action='store_true',
+        help='Keep internal links relative in XML output (useful for domain migration)'
+    )
 
     args = parser.parse_args()
 
@@ -91,7 +96,8 @@ Examples:
     extractor = BlogExtractor(
         urls_file=args.urls,
         output_dir=args.output,
-        verbose=verbose
+        verbose=verbose,
+        relative_links=args.relative_links
     )
 
     # Load URLs
