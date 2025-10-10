@@ -204,6 +204,30 @@ class BlogExtractor:
                             pass  # Continue anyway, content might use different selector
                         page.wait_for_timeout(2000)  # Extra time for dynamic content
 
+                        # Scroll down in steps to trigger ALL lazy-loaded images
+                        # This ensures every image on the page loads at full quality
+                        self._log("info", "  Scrolling page to load all images...")
+
+                        # Scroll to 25% of page
+                        page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.25)")
+                        page.wait_for_timeout(1500)
+
+                        # Scroll to 50% of page
+                        page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
+                        page.wait_for_timeout(1500)
+
+                        # Scroll to 75% of page
+                        page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.75)")
+                        page.wait_for_timeout(1500)
+
+                        # Scroll to bottom
+                        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        page.wait_for_timeout(3000)  # Wait longer at bottom for final images
+
+                        # Scroll back to top
+                        page.evaluate("window.scrollTo(0, 0)")
+                        page.wait_for_timeout(1000)
+
                         # Get page content
                         html_content = page.content()
                         browser.close()
@@ -276,6 +300,30 @@ class BlogExtractor:
                     except:
                         pass  # Continue anyway, content might use different selector
                     await page.wait_for_timeout(2000)  # Extra time for dynamic content
+
+                    # Scroll down in steps to trigger ALL lazy-loaded images
+                    # This ensures every image on the page loads at full quality
+                    self._log("info", "  Scrolling page to load all images...")
+
+                    # Scroll to 25% of page
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.25)")
+                    await page.wait_for_timeout(1500)
+
+                    # Scroll to 50% of page
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
+                    await page.wait_for_timeout(1500)
+
+                    # Scroll to 75% of page
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.75)")
+                    await page.wait_for_timeout(1500)
+
+                    # Scroll to bottom
+                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await page.wait_for_timeout(3000)  # Wait longer at bottom for final images
+
+                    # Scroll back to top
+                    await page.evaluate("window.scrollTo(0, 0)")
+                    await page.wait_for_timeout(1000)
 
                     # Get page content
                     html_content = await page.content()
