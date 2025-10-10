@@ -86,18 +86,33 @@ Examples:
         action='store_true',
         help='Keep internal links relative in XML output (useful for domain migration)'
     )
+    parser.add_argument(
+        '--include-images',
+        action='store_true',
+        default=True,
+        help='Include images in exported content (WordPress will auto-download during import, default: True)'
+    )
+    parser.add_argument(
+        '--no-images',
+        action='store_true',
+        help='Exclude images from exported content'
+    )
 
     args = parser.parse_args()
 
     # Handle verbose/quiet modes
     verbose = args.verbose if not args.quiet else False
 
+    # Handle include_images: --no-images takes precedence
+    include_images = not args.no_images if args.no_images else args.include_images
+
     # Create extractor
     extractor = BlogExtractor(
         urls_file=args.urls,
         output_dir=args.output,
         verbose=verbose,
-        relative_links=args.relative_links
+        relative_links=args.relative_links,
+        include_images=include_images
     )
 
     # Load URLs

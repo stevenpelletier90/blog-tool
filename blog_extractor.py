@@ -85,7 +85,8 @@ class BlogExtractor:
         output_dir: str = OUTPUT_DIR,
         callback: Optional[Callable[[str, str], None]] = None,
         verbose: bool = True,
-        relative_links: bool = False
+        relative_links: bool = False,
+        include_images: bool = True
     ):
         self.urls_file = urls_file
         self.output_dir = output_dir
@@ -93,6 +94,7 @@ class BlogExtractor:
         self.callback = callback  # Optional callback for UI updates (level, message)
         self.verbose = verbose
         self.relative_links = relative_links  # Keep internal links relative in XML output
+        self.include_images = include_images  # Include images in exported content
         self.seen_hashes: Set[str] = set()  # For duplicate detection
 
         # Create output directory if it doesn't exist
@@ -565,16 +567,18 @@ class BlogExtractor:
             if isinstance(br, Tag):
                 br.replace_with(' ')
 
-        # Remove all img tags completely (we don't want images)
-        # Add space before removing to prevent text concatenation
-        for img in soup.find_all('img'):
-            if isinstance(img, Tag):
-                from bs4 import NavigableString
-                img.insert_before(NavigableString(' '))
-                img.insert_after(NavigableString(' '))
-                img.decompose()
+        # Remove img tags if include_images is False
+        if not self.include_images:
+            # Remove all img tags completely (we don't want images)
+            # Add space before removing to prevent text concatenation
+            for img in soup.find_all('img'):
+                if isinstance(img, Tag):
+                    from bs4 import NavigableString
+                    img.insert_before(NavigableString(' '))
+                    img.insert_after(NavigableString(' '))
+                    img.decompose()
 
-        # Define allowed tags (semantic HTML only, NO images)
+        # Define allowed tags (semantic HTML only)
         # Note: b/i tags are normalized to strong/em before this check
         allowed_tags = {
             'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -582,9 +586,14 @@ class BlogExtractor:
             'blockquote', 'pre', 'code', 'a'
         }
 
+        # Add img to allowed tags if we're including images
+        if self.include_images:
+            allowed_tags.add('img')
+
         # Define which attributes to keep for specific tags
         allowed_attrs = {
-            'a': ['href', 'class', 'data-is-button']  # Allow class and button marker for links
+            'a': ['href', 'class', 'data-is-button'],  # Allow class and button marker for links
+            'img': ['src', 'alt', 'title', 'width', 'height', 'class']  # Image attributes
         }
 
         # Remove unwanted elements but keep their content
@@ -609,6 +618,12 @@ class BlogExtractor:
         for i_tag in soup.find_all('i'):
             if isinstance(i_tag, Tag):
                 i_tag.name = 'em'
+
+        # Convert H1 to H2 - WordPress post title is already H1, so content H1s create duplicate H1s
+        # This fixes SEO and accessibility issues
+        for h1_tag in soup.find_all('h1'):
+            if isinstance(h1_tag, Tag):
+                h1_tag.name = 'h2'
 
         # Clean attributes from all elements
         for element in soup.find_all():
@@ -643,6 +658,31 @@ class BlogExtractor:
                         # Extract the block element and insert it before the paragraph
                         block_elem.extract()
                         p.insert_before(block_elem)
+
+        # Extract images from paragraphs and headings to make them block-level (if including images)
+        # Images work better as separate Gutenberg blocks, not inline
+        if self.include_images:
+            # Extract from paragraphs
+            for p in soup.find_all('p'):
+                if isinstance(p, Tag):
+                    # Find any images inside this paragraph
+                    images = p.find_all('img')
+                    for img in images:
+                        if isinstance(img, Tag):
+                            # Extract the image and insert it before the paragraph
+                            img.extract()
+                            p.insert_before(img)
+
+            # Extract from headings (h1-h6)
+            for heading in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+                if isinstance(heading, Tag):
+                    # Find any images inside this heading
+                    images = heading.find_all('img')
+                    for img in images:
+                        if isinstance(img, Tag):
+                            # Extract the image and insert it before the heading
+                            img.extract()
+                            heading.insert_before(img)
 
         # Extract block-level elements from lists
         # Lists (ul/ol) can ONLY contain <li> as direct children
@@ -697,7 +737,7 @@ class BlogExtractor:
         return html_output
 
     def html_to_gutenberg(self, html_content: str) -> str:
-        """Convert clean HTML to Gutenberg blocks format"""
+        """Convert clean HTML to Gutenberg blocks format (with block comments)"""
         if not html_content.strip():
             return ""
 
@@ -726,7 +766,7 @@ class BlogExtractor:
         for element in soup.children:
             if isinstance(element, Tag) and element.name:
                 # Check if it's a block-level element
-                if element.name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre']:
+                if element.name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre', 'img']:
                     # Flush any accumulated inline content first
                     if current_paragraph_parts:
                         para_content = ''.join(str(p) for p in current_paragraph_parts)
@@ -764,12 +804,11 @@ class BlogExtractor:
         return '\n\n'.join(gutenberg_blocks)
 
     def element_to_gutenberg_block(self, element) -> str:
-        """Convert a single HTML element to Gutenberg block"""
+        """Convert a single HTML element to Gutenberg block with proper comments"""
         tag_name = element.name.lower()
 
         if tag_name == 'a' and isinstance(element, Tag) and element.get('data-is-button') == 'true':
-            # Handle button links as custom HTML blocks to preserve exact structure
-            # Remove the data-is-button marker attribute for output
+            # Handle button links as HTML blocks
             element_copy = BeautifulSoup(str(element), 'html.parser').find('a')
             if element_copy and isinstance(element_copy, Tag):
                 if 'data-is-button' in element_copy.attrs:
@@ -777,7 +816,6 @@ class BlogExtractor:
                 button_html = str(element_copy)
             else:
                 button_html = str(element)
-
             return f'<!-- wp:html -->\n{button_html}\n<!-- /wp:html -->'
 
         elif tag_name == 'p':
@@ -794,12 +832,10 @@ class BlogExtractor:
             return f'<!-- wp:list -->\n{content}\n<!-- /wp:list -->'
 
         elif tag_name == 'blockquote':
-            # Wrap blockquote in proper wp-block-quote class
             inner_content = element.decode_contents()
             return f'<!-- wp:quote -->\n<blockquote class="wp-block-quote">{inner_content}</blockquote>\n<!-- /wp:quote -->'
 
         elif tag_name == 'pre':
-            # Check if it contains code
             if element.find('code'):
                 content = element.get_text()
                 return f'<!-- wp:code -->\n<pre class="wp-block-code"><code>{content}</code></pre>\n<!-- /wp:code -->'
@@ -808,7 +844,30 @@ class BlogExtractor:
                 return f'<!-- wp:preformatted -->\n{content}\n<!-- /wp:preformatted -->'
 
         elif tag_name == 'img':
-            # Skip images completely
+            # Create proper Gutenberg image block with figure wrapper
+            if isinstance(element, Tag):
+                src = element.get('src', '')
+                alt = element.get('alt', '')
+                width = element.get('width', '')
+                height = element.get('height', '')
+
+                # Strip "px" suffix from width and height
+                if width:
+                    width = re.sub(r'(\d+)px', r'\1', str(width))
+                if height:
+                    height = re.sub(r'(\d+)px', r'\1', str(height))
+
+                # Build img tag with cleaned attributes
+                img_attrs = f'src="{src}"'
+                if alt:
+                    img_attrs += f' alt="{alt}"'
+                if width:
+                    img_attrs += f' width="{width}"'
+                if height:
+                    img_attrs += f' height="{height}"'
+
+                # Return as proper Gutenberg image block with figure wrapper
+                return f'<!-- wp:image {{"sizeSlug":"large"}} -->\n<figure class="wp-block-image size-large"><img {img_attrs}/></figure>\n<!-- /wp:image -->'
             return ""
 
         else:
@@ -821,7 +880,7 @@ class BlogExtractor:
                 # Skip br tags completely
                 return ""
             else:
-                # Block elements - return as-is or wrap in paragraph
+                # Block elements - wrap in paragraph
                 return f'<!-- wp:paragraph -->\n<p>{content}</p>\n<!-- /wp:paragraph -->'
 
     def extract_author(self, soup: BeautifulSoup) -> str:
@@ -950,6 +1009,28 @@ class BlogExtractor:
 
         return datetime.now().strftime('%Y-%m-%d')
 
+    def extract_images_from_content(self, content: str) -> List[Dict[str, str]]:
+        """Extract image URLs and attributes from Gutenberg content"""
+        if not content:
+            return []
+
+        soup = BeautifulSoup(content, 'html.parser')
+        images = []
+
+        for img in soup.find_all('img'):
+            if isinstance(img, Tag):
+                src = img.get('src', '')
+                if src:
+                    # Only include images with valid sources
+                    images.append({
+                        'src': str(src),
+                        'alt': str(img.get('alt', '')),
+                        'width': str(img.get('width', '')),
+                        'height': str(img.get('height', ''))
+                    })
+
+        return images
+
     def extract_links(self, soup: BeautifulSoup, base_url: str) -> List[Dict[str, str]]:
         """Extract hyperlinks from blog post content only (not navigation/menus/tags)"""
         # First find the content area using same selectors as extract_content()
@@ -1070,6 +1151,9 @@ class BlogExtractor:
         # Calculate text length for display (strip HTML tags for counting)
         text_for_counting = BeautifulSoup(content, 'html.parser').get_text() if content else ""
 
+        # Extract image URLs from content for WordPress attachments
+        images = self.extract_images_from_content(content) if self.include_images else []
+
         data = {
             'status': 'success',
             'url': url,
@@ -1082,6 +1166,7 @@ class BlogExtractor:
             'tags': tags,
             'links': links,
             'platform': platform,
+            'images': images,  # Add images for WordPress attachment items
         }
 
         self.extracted_data.append(data)
@@ -1132,6 +1217,9 @@ class BlogExtractor:
         # Calculate text length for display (strip HTML tags for counting)
         text_for_counting = BeautifulSoup(content, 'html.parser').get_text() if content else ""
 
+        # Extract image URLs from content for WordPress attachments
+        images = self.extract_images_from_content(content) if self.include_images else []
+
         data = {
             'status': 'success',
             'url': url,
@@ -1144,6 +1232,7 @@ class BlogExtractor:
             'tags': tags,
             'links': links,
             'platform': platform,
+            'images': images,  # Add images for WordPress attachment items
         }
 
         self.extracted_data.append(data)
@@ -1454,6 +1543,46 @@ class BlogExtractor:
             f.write('<category domain="post_tag" nicename="{}"><![CDATA[{}]]></category>\n'.format(
                 normalized_tag.lower().replace(' ', '-'), normalized_tag))
 
+        f.write('</item>\n')
+
+        # Write attachment items for each image in the post
+        if 'images' in post and post['images']:
+            for idx, image in enumerate(post['images']):
+                self._write_xml_attachment(f, image, idx, post_id, date_formats, author)
+
+    def _write_xml_attachment(self, f, image: Dict[str, str], post_id: int, parent_post_id: int, date_formats: dict, author: str):
+        """Write single attachment item to WordPress XML"""
+        # Generate unique attachment ID
+        attachment_id = abs(hash(image['src']) % 1000000) + 1000000  # Offset to avoid collision with posts
+
+        # Extract filename from URL for title
+        from urllib.parse import urlparse
+        parsed_url = urlparse(image['src'])
+        filename = os.path.basename(parsed_url.path) or 'image'
+        title = os.path.splitext(filename)[0].replace('-', ' ').replace('_', ' ').title()
+
+        f.write('<item>\n')
+        f.write(f'<title><![CDATA[{title}]]></title>\n')
+        f.write(f'<link>{html.escape(image["src"])}</link>\n')
+        f.write(f'<pubDate>{date_formats["rfc2822"]}</pubDate>\n')
+        f.write(f'<dc:creator><![CDATA[{author}]]></dc:creator>\n')
+        f.write('<guid isPermaLink="false">{}</guid>\n'.format(html.escape(image["src"])))
+        f.write('<description></description>\n')
+        f.write('<content:encoded><![CDATA[]]></content:encoded>\n')
+        f.write('<excerpt:encoded><![CDATA[]]></excerpt:encoded>\n')
+        f.write(f'<wp:post_id>{attachment_id}</wp:post_id>\n')
+        f.write(f'<wp:post_date><![CDATA[{date_formats["mysql"]}]]></wp:post_date>\n')
+        f.write(f'<wp:post_date_gmt><![CDATA[{date_formats["mysql_gmt"]}]]></wp:post_date_gmt>\n')
+        f.write('<wp:comment_status><![CDATA[closed]]></wp:comment_status>\n')
+        f.write('<wp:ping_status><![CDATA[closed]]></wp:ping_status>\n')
+        f.write('<wp:post_name><![CDATA[{}]]></wp:post_name>\n'.format(filename.lower().replace(' ', '-')))
+        f.write('<wp:status><![CDATA[inherit]]></wp:status>\n')
+        f.write(f'<wp:post_parent>{parent_post_id}</wp:post_parent>\n')
+        f.write('<wp:menu_order>0</wp:menu_order>\n')
+        f.write('<wp:post_type><![CDATA[attachment]]></wp:post_type>\n')
+        f.write('<wp:post_password><![CDATA[]]></wp:post_password>\n')
+        f.write('<wp:is_sticky>0</wp:is_sticky>\n')
+        f.write('<wp:attachment_url><![CDATA[{}]]></wp:attachment_url>\n'.format(html.escape(image['src'])))
         f.write('</item>\n')
 
     def save_to_xml(self, filename: str):
