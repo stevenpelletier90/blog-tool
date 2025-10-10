@@ -1432,6 +1432,8 @@ class BlogExtractor:
         # Get the last segment of the path (e.g., /blog/2024/post-slug/ -> post-slug)
         path_segments = [s for s in parsed_url.path.split('/') if s]
         slug = path_segments[-1] if path_segments else title.lower().replace(' ', '-')
+        # Remove .htm, .html, .php extensions from slug
+        slug = re.sub(r'\.(htm|html|php)$', '', slug, flags=re.IGNORECASE)
         f.write('<wp:post_name><![CDATA[{}]]></wp:post_name>\n'.format(slug))
         f.write('<wp:status><![CDATA[publish]]></wp:status>\n')
         f.write('<wp:post_parent>0</wp:post_parent>\n')
