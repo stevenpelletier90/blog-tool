@@ -86,7 +86,8 @@ class BlogExtractor:
         callback: Optional[Callable[[str, str], None]] = None,
         verbose: bool = True,
         relative_links: bool = False,
-        include_images: bool = True
+        include_images: bool = True,
+        skip_duplicates: bool = True
     ):
         self.urls_file = urls_file
         self.output_dir = output_dir
@@ -95,6 +96,7 @@ class BlogExtractor:
         self.verbose = verbose
         self.relative_links = relative_links  # Keep internal links relative in XML output
         self.include_images = include_images  # Include images in exported content
+        self.skip_duplicates = skip_duplicates  # Skip duplicate content (default True)
         self.seen_hashes: Set[str] = set()  # For duplicate detection
 
         # Create output directory if it doesn't exist
@@ -578,6 +580,20 @@ class BlogExtractor:
             if isinstance(br, Tag):
                 br.replace_with(' ')
 
+        # Fix lazy-loaded images (Wix uses data-pin-media for full-quality images)
+        if self.include_images:
+            for img in soup.find_all('img'):
+                if isinstance(img, Tag):
+                    # Wix lazy loading: data-pin-media contains full quality image
+                    # while src contains low-quality placeholder
+                    data_pin_media = img.get('data-pin-media')
+                    if data_pin_media:
+                        img['src'] = data_pin_media
+                        # Remove lazy-loading attributes
+                        for attr in ['data-pin-media', 'data-load-done', 'data-ssr-src-done', 'data-pin-url']:
+                            if attr in img.attrs:
+                                del img[attr]
+
         # Remove img tags if include_images is False
         if not self.include_images:
             # Remove all img tags completely (we don't want images)
@@ -868,7 +884,7 @@ class BlogExtractor:
                     alt = unquote(str(alt))
 
                 # Build minimal img tag - only src and alt (matches WordPress native format)
-                # No width/height attributes - WordPress handles sizing through CSS
+                # No width/height attributes or inline styles - WordPress handles sizing
                 if alt:
                     img_html = f'<img src="{src}" alt="{alt}"/>'
                 else:
@@ -1138,16 +1154,21 @@ class BlogExtractor:
         content = self.extract_content(soup)
 
         # Check for duplicate content
+        is_duplicate = False
         if content:
             content_hash = self.get_content_hash(content)
             if content_hash in self.seen_hashes:
-                self._log("warning", f"  ⚠️ Duplicate content detected - skipping")
-                return {
-                    'status': 'duplicate',
-                    'url': url,
-                    'title': title,
-                    'error': 'Duplicate content'
-                }
+                is_duplicate = True
+                if self.skip_duplicates:
+                    self._log("warning", f"  ⚠️ Duplicate content detected - skipping")
+                    return {
+                        'status': 'duplicate',
+                        'url': url,
+                        'title': title,
+                        'error': 'Duplicate content'
+                    }
+                else:
+                    self._log("warning", f"  ⚠️ Duplicate content detected - including anyway")
             self.seen_hashes.add(content_hash)
 
         author = self.extract_author(soup)
@@ -1204,16 +1225,21 @@ class BlogExtractor:
         content = self.extract_content(soup)
 
         # Check for duplicate content
+        is_duplicate = False
         if content:
             content_hash = self.get_content_hash(content)
             if content_hash in self.seen_hashes:
-                self._log("warning", f"  ⚠️ Duplicate content detected - skipping")
-                return {
-                    'status': 'duplicate',
-                    'url': url,
-                    'title': title,
-                    'error': 'Duplicate content'
-                }
+                is_duplicate = True
+                if self.skip_duplicates:
+                    self._log("warning", f"  ⚠️ Duplicate content detected - skipping")
+                    return {
+                        'status': 'duplicate',
+                        'url': url,
+                        'title': title,
+                        'error': 'Duplicate content'
+                    }
+                else:
+                    self._log("warning", f"  ⚠️ Duplicate content detected - including anyway")
             self.seen_hashes.add(content_hash)
 
         author = self.extract_author(soup)

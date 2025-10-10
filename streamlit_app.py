@@ -149,61 +149,40 @@ def analyze_links(extraction_results: List[Dict]) -> Dict[str, Any]:
     }
 
 def get_url_inputs():
-    """Simple URL input with immediate extract button"""
-    # Use markdown without anchor links
+    """Simple URL input without extract button"""
     st.markdown("### 📝 Step 1: Enter Your Blog URLs")
     st.caption("Paste your blog URLs below (one per line)")
 
-    # Two column layout: text area + button
-    col1, col2 = st.columns([3, 1])
+    # Text area for URL input
+    url_text = st.text_area(
+        "Blog URLs:",
+        height=250,
+        placeholder="https://example.com/blog/post1\nhttps://example.com/blog/post2\nhttps://example.com/blog/post3",
+        label_visibility="collapsed"
+    )
 
-    with col1:
-        # Text area
-        url_text = st.text_area(
-            "Blog URLs:",
-            height=250,
-            placeholder="https://example.com/blog/post1\nhttps://example.com/blog/post2\nhttps://example.com/blog/post3",
-            label_visibility="collapsed"
-        )
+    # Parse and validate URLs
+    urls = []
+    if url_text:
+        urls = [url.strip() for url in url_text.strip().split('\n') if url.strip()]
 
-    with col2:
-        # Add some vertical spacing to align with text area
-        st.write("")
-        st.write("")
+    valid_urls = validate_urls(urls)
 
-        # Always show button, but disable if no valid URLs
-        urls = []
-        if url_text:
-            urls = [url.strip() for url in url_text.strip().split('\n') if url.strip()]
+    # Show URL count
+    if valid_urls:
+        st.success(f"✅ {len(valid_urls)} valid URL{'s' if len(valid_urls) != 1 else ''} ready to extract")
+    else:
+        st.info("👆 Paste your blog URLs above to get started")
 
-        valid_urls = validate_urls(urls)
-
-        # Show button always, disable if no URLs
-        button_clicked = st.button(
-            "🚀 **EXTRACT POSTS**",
-            type="primary",
-            use_container_width=True,
-            disabled=len(valid_urls) == 0,
-            key="extract_button_top",
-            help="Click to start extracting blog posts"
-        )
-
-        if valid_urls:
-            st.success(f"✅ {len(valid_urls)} ready")
-        else:
-            st.info("👆 Paste URLs first")
-
-        st.caption("*or configure options below*")
-
-    return valid_urls, button_clicked
+    return valid_urls
 
 
-def get_concurrent_settings() -> tuple[int, bool]:
+def get_concurrent_settings() -> tuple[int, bool, bool, bool]:
     """Get concurrent processing settings - concurrent is default for best performance"""
-    st.markdown("### ⚡ Step 2 (Optional): Performance Settings")
-    st.caption("Concurrent processing is enabled by default for maximum speed (3-5x faster)")
+    st.markdown("### ⚙️ Step 2: Configuration Options")
+    st.caption("Configure how your blog posts will be extracted and processed")
 
-    with st.expander("⚙️ Advanced Performance Options"):
+    with st.expander("⚡ Performance Settings", expanded=False):
         max_concurrent = st.slider(
             "Concurrent requests:",
             min_value=1,
@@ -217,8 +196,7 @@ def get_concurrent_settings() -> tuple[int, bool]:
         else:
             st.info(f"💨 Processing {max_concurrent} URLs simultaneously (3-5x faster!)")
 
-        st.markdown("---")
-
+    with st.expander("🔧 Content Options", expanded=True):
         # Link handling option
         relative_links = st.checkbox(
             "Use relative links in XML output",
@@ -245,21 +223,30 @@ def get_concurrent_settings() -> tuple[int, bool]:
         else:
             st.info("🚫 Images will be excluded from exported content")
 
-        return max_concurrent, relative_links, include_images
+        st.markdown("---")
 
-    return 5, False, True  # Default to concurrent with 5 workers, absolute links, include images
+        # Duplicate handling option
+        skip_duplicates = st.checkbox(
+            "Skip duplicate content (recommended)",
+            value=True,
+            help="Automatically skip blog posts with identical content. Uncheck this if you need duplicates in the XML for find/replace operations."
+        )
+
+        if skip_duplicates:
+            st.info("✅ Duplicate posts will be detected and skipped")
+        else:
+            st.warning("⚠️ Duplicates will be included - useful for find/replace but may create duplicate posts in WordPress")
+
+    return max_concurrent, relative_links, include_images, skip_duplicates
 
 def display_find_replace():
-    """Simple find/replace interface for link modification"""
-    if not st.session_state.get('link_analysis'):
+    """General-purpose find/replace interface for XML modification"""
+    # Only show if extraction is complete
+    if not st.session_state.extraction_complete:
         return
 
-    internal = st.session_state.link_analysis.get('internal', {})
-    if not internal:
-        return
-
-    st.markdown("### 🔄 Fix Internal Links")
-    st.write("Change domain names before downloading (useful when migrating blogs)")
+    st.markdown("### 🔄 Find & Replace in XML")
+    st.write("Search and replace any text in the XML before downloading (works on entire file: URLs, domains, text, etc.)")
 
     # Initialize replacements in session state
     if 'replacements' not in st.session_state:
@@ -305,7 +292,7 @@ def apply_replacements(xml_content: str) -> str:
 
     return modified_content
 
-def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool = False, include_images: bool = True):
+def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool = False, include_images: bool = True, skip_duplicates: bool = True):
     """Process URLs with progress tracking (supports async concurrent mode)"""
     if not urls:
         st.error("❌ No valid URLs to process")
@@ -353,7 +340,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
                 st.info(f"ℹ️ {message}")
 
     # Initialize extractor with callback
-    extractor = BlogExtractor(callback=logging_callback, verbose=False, relative_links=relative_links, include_images=include_images)
+    extractor = BlogExtractor(callback=logging_callback, verbose=False, relative_links=relative_links, include_images=include_images, skip_duplicates=skip_duplicates)
 
     # Reset session state
     st.session_state.extraction_results = []
@@ -620,11 +607,26 @@ def main():
     # Display header
     display_header()
 
-    # Get URLs and check if extract button was clicked
-    urls, start_extraction = get_url_inputs()
+    # Get URLs
+    urls = get_url_inputs()
 
-    # Get concurrent settings (optional, collapsed by default)
-    max_concurrent, relative_links, include_images = get_concurrent_settings()
+    # Get concurrent settings
+    max_concurrent, relative_links, include_images, skip_duplicates = get_concurrent_settings()
+
+    # Step 3: Extract button (after configuration)
+    st.markdown("### 🚀 Step 3: Start Extraction")
+    st.caption("Click the button below to begin extracting your blog posts")
+
+    start_extraction = st.button(
+        "🚀 EXTRACT BLOG POSTS NOW",
+        type="primary",
+        use_container_width=True,
+        disabled=len(urls) == 0 or st.session_state.is_processing,
+        help="Start extracting all blog posts with your configured settings"
+    )
+
+    if len(urls) == 0:
+        st.info("👆 Enter some URLs in Step 1 to enable extraction")
 
     # Start extraction if button was clicked
     if start_extraction and urls and not st.session_state.is_processing:
@@ -635,7 +637,7 @@ def main():
         st.markdown("### 🔄 Extracting Blog Posts...")
 
         with st.spinner("Processing your blog posts..."):
-            process_urls(urls, max_concurrent, relative_links, include_images)
+            process_urls(urls, max_concurrent, relative_links, include_images, skip_duplicates)
     elif st.session_state.is_processing:
         st.warning("⏳ Extraction in progress...")
 
