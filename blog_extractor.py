@@ -844,30 +844,27 @@ class BlogExtractor:
                 return f'<!-- wp:preformatted -->\n{content}\n<!-- /wp:preformatted -->'
 
         elif tag_name == 'img':
-            # Create proper Gutenberg image block with figure wrapper
+            # Create WordPress-native image block format (matches what WordPress generates)
             if isinstance(element, Tag):
+                from urllib.parse import unquote
+
                 src = element.get('src', '')
                 alt = element.get('alt', '')
-                width = element.get('width', '')
-                height = element.get('height', '')
 
-                # Strip "px" suffix from width and height
-                if width:
-                    width = re.sub(r'(\d+)px', r'\1', str(width))
-                if height:
-                    height = re.sub(r'(\d+)px', r'\1', str(height))
-
-                # Build img tag with cleaned attributes
-                img_attrs = f'src="{src}"'
+                # URL-decode alt text (e.g., "2025%20Nissan" -> "2025 Nissan")
+                # This prevents Gutenberg validation errors
                 if alt:
-                    img_attrs += f' alt="{alt}"'
-                if width:
-                    img_attrs += f' width="{width}"'
-                if height:
-                    img_attrs += f' height="{height}"'
+                    alt = unquote(str(alt))
 
-                # Return as proper Gutenberg image block with figure wrapper
-                return f'<!-- wp:image {{"sizeSlug":"large"}} -->\n<figure class="wp-block-image size-large"><img {img_attrs}/></figure>\n<!-- /wp:image -->'
+                # Build minimal img tag - only src and alt (matches WordPress native format)
+                # No width/height attributes - WordPress handles sizing through CSS
+                if alt:
+                    img_html = f'<img src="{src}" alt="{alt}"/>'
+                else:
+                    img_html = f'<img src="{src}"/>'
+
+                # Simple Gutenberg image block without JSON attributes
+                return f'<!-- wp:image -->\n<figure class="wp-block-image">{img_html}</figure>\n<!-- /wp:image -->'
             return ""
 
         else:
