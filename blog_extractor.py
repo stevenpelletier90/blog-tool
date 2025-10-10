@@ -510,6 +510,17 @@ class BlogExtractor:
         html_content = html_content.replace('\u2014', '-')  # Em dash
         html_content = html_content.replace('\u00a0', ' ')  # Non-breaking space
 
+        # STEP 1.5: Convert Wix-style paragraph breaks to double <br> tags
+        # Wix uses consecutive empty spans with whitespace/newlines as paragraph separators
+        # Pattern: <span>\n</span><span>\n</span> or <span> </span><span> </span>
+        # Convert to: <br/><br/> so next step converts to paragraph breaks
+        html_content = re.sub(
+            r'<span[^>]*>\s*</span>\s*<span[^>]*>\s*</span>',
+            '<br/><br/>',
+            html_content,
+            flags=re.IGNORECASE
+        )
+
         # STEP 2: Convert double <br> tags to paragraph breaks
         # This handles the pattern: text<br/><br/>more text
         # Replace with: </p><p>
