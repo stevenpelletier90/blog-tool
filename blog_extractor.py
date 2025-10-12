@@ -193,40 +193,45 @@ class BlogExtractor:
                         )
                         page = context.new_page()
 
-                        # Navigate and wait for content to load
+                        # Navigate and wait for ALL network activity to finish
                         self._log("info", f"  Fetching with Playwright (attempt {attempt + 1}/{max_retries})...")
-                        page.goto(url, wait_until='domcontentloaded', timeout=60000)
+                        # CRITICAL: wait_until='networkidle' ensures ALL images finish loading
+                        page.goto(url, wait_until='networkidle', timeout=120000)
 
                         # Wait for blog content to render (Angular SPA)
                         try:
                             page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=10000)
                         except:
                             pass  # Continue anyway, content might use different selector
-                        page.wait_for_timeout(2000)  # Extra time for dynamic content
+                        page.wait_for_timeout(3000)  # Extra time for dynamic content
 
-                        # Scroll down in steps to trigger ALL lazy-loaded images
-                        # This ensures every image on the page loads at full quality
-                        self._log("info", "  Scrolling page to load all images...")
+                        # FOOLPROOF SCROLLING: Scroll slowly + wait for network idle after EACH step
+                        # This ensures EVERY image lazy-loads at full quality (not placeholders)
+                        self._log("info", "  Scrolling to load all images (20-30 seconds)...")
 
                         # Scroll to 25% of page
                         page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.25)")
-                        page.wait_for_timeout(1500)
+                        page.wait_for_load_state('networkidle', timeout=20000)
+                        page.wait_for_timeout(2000)
 
                         # Scroll to 50% of page
                         page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
-                        page.wait_for_timeout(1500)
+                        page.wait_for_load_state('networkidle', timeout=20000)
+                        page.wait_for_timeout(2000)
 
                         # Scroll to 75% of page
                         page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.75)")
-                        page.wait_for_timeout(1500)
+                        page.wait_for_load_state('networkidle', timeout=20000)
+                        page.wait_for_timeout(2000)
 
                         # Scroll to bottom
                         page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        page.wait_for_timeout(3000)  # Wait longer at bottom for final images
+                        page.wait_for_load_state('networkidle', timeout=20000)
+                        page.wait_for_timeout(4000)  # Extra wait at bottom for final images
 
                         # Scroll back to top
                         page.evaluate("window.scrollTo(0, 0)")
-                        page.wait_for_timeout(1000)
+                        page.wait_for_timeout(1500)
 
                         # Get page content
                         html_content = page.content()
@@ -290,40 +295,45 @@ class BlogExtractor:
                     )
                     page = await context.new_page()
 
-                    # Navigate and wait for content to load
+                    # Navigate and wait for ALL network activity to finish
                     self._log("info", f"  Fetching with Playwright async (attempt {attempt + 1}/{max_retries})...")
-                    await page.goto(url, wait_until='domcontentloaded', timeout=60000)
+                    # CRITICAL: wait_until='networkidle' ensures ALL images finish loading
+                    await page.goto(url, wait_until='networkidle', timeout=120000)
 
                     # Wait for blog content to render (Angular SPA)
                     try:
                         await page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=10000)
                     except:
                         pass  # Continue anyway, content might use different selector
-                    await page.wait_for_timeout(2000)  # Extra time for dynamic content
+                    await page.wait_for_timeout(3000)  # Extra time for dynamic content
 
-                    # Scroll down in steps to trigger ALL lazy-loaded images
-                    # This ensures every image on the page loads at full quality
-                    self._log("info", "  Scrolling page to load all images...")
+                    # FOOLPROOF SCROLLING: Scroll slowly + wait for network idle after EACH step
+                    # This ensures EVERY image lazy-loads at full quality (not placeholders)
+                    self._log("info", "  Scrolling to load all images (20-30 seconds)...")
 
                     # Scroll to 25% of page
                     await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.25)")
-                    await page.wait_for_timeout(1500)
+                    await page.wait_for_load_state('networkidle', timeout=20000)
+                    await page.wait_for_timeout(2000)
 
                     # Scroll to 50% of page
                     await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
-                    await page.wait_for_timeout(1500)
+                    await page.wait_for_load_state('networkidle', timeout=20000)
+                    await page.wait_for_timeout(2000)
 
                     # Scroll to 75% of page
                     await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.75)")
-                    await page.wait_for_timeout(1500)
+                    await page.wait_for_load_state('networkidle', timeout=20000)
+                    await page.wait_for_timeout(2000)
 
                     # Scroll to bottom
                     await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await page.wait_for_timeout(3000)  # Wait longer at bottom for final images
+                    await page.wait_for_load_state('networkidle', timeout=20000)
+                    await page.wait_for_timeout(4000)  # Extra wait at bottom for final images
 
                     # Scroll back to top
                     await page.evaluate("window.scrollTo(0, 0)")
-                    await page.wait_for_timeout(1000)
+                    await page.wait_for_timeout(1500)
 
                     # Get page content
                     html_content = await page.content()
