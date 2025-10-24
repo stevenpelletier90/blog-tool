@@ -5,18 +5,27 @@ Extract blog posts from URLs and convert to multiple formats.
 """
 
 import argparse
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 import asyncio
 import sys
 import time
 
-try:
-    from tqdm import tqdm
-    HAS_TQDM = True
-except ImportError:
-    HAS_TQDM = False
-    tqdm = None  # type: ignore
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TaskID
+from rich.panel import Panel
+from rich.table import Table
 
-from blog_extractor import BlogExtractor, URLS_FILE, OUTPUT_DIR, REQUEST_DELAY
+from blog_extractor import OUTPUT_DIR, REQUEST_DELAY, URLS_FILE, BlogExtractor
+
+# Initialize rich console
+console = Console()
 
 
 def main():
@@ -90,12 +99,23 @@ Examples:
         '--include-images',
         action='store_true',
         default=True,
-        help='Include images in exported content (WordPress will auto-download during import, default: True)'
+        help='Include images in exported content (default: True)'
     )
     parser.add_argument(
         '--no-images',
         action='store_true',
         help='Exclude images from exported content'
+    )
+    parser.add_argument(
+        '--download-images',
+        action='store_true',
+        default=True,
+        help='Download images locally to output/images/ (default: True, protects against source images being removed)'
+    )
+    parser.add_argument(
+        '--no-download-images',
+        action='store_true',
+        help='Use external image URLs instead of downloading (not recommended)'
     )
 
     args = parser.parse_args()
@@ -106,13 +126,17 @@ Examples:
     # Handle include_images: --no-images takes precedence
     include_images = not args.no_images if args.no_images else args.include_images
 
+    # Handle download_images: --no-download-images takes precedence
+    download_images = not args.no_download_images if args.no_download_images else args.download_images
+
     # Create extractor
     extractor = BlogExtractor(
         urls_file=args.urls,
         output_dir=args.output,
         verbose=verbose,
         relative_links=args.relative_links,
-        include_images=include_images
+        include_images=include_images,
+        download_images=download_images
     )
 
     # Load URLs
@@ -122,7 +146,7 @@ Examples:
         extractor._log("warning", "No URLs to process")
         return 1
 
-    extractor._log("info", f"=== Blog Post Extractor ===")
+    extractor._log("info", "=== Blog Post Extractor ===")
     extractor._log("info", f"Processing {len(urls)} URLs with Playwright...")
     extractor._log("info", f"Output format: {args.format}")
     extractor._log("info", f"Max retries per URL: {args.retries}")
@@ -137,50 +161,71 @@ Examples:
 
     # Use async concurrent processing if --concurrent > 1
     if args.concurrent > 1:
-        # Async concurrent processing
-        extractor._log("info", f"Starting concurrent processing...")
-        start_time = time.time()
+        if not args.quiet:
+            # Rich progress for concurrent mode
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TextColumn("({task.completed}/{task.total})"),
+                TimeElapsedColumn(),
+                console=console
+            ) as progress:
+                task = progress.add_task(f"[cyan]Processing {args.concurrent} URLs concurrently...", total=len(urls))
 
-        results = asyncio.run(extractor.process_urls_concurrently(urls, args.concurrent))
+                # Run concurrent extraction
+                results = asyncio.run(extractor.process_urls_concurrently(urls, args.concurrent))
 
-        # Count results
-        for result in results:
-            if result.get('status') == 'success':
-                success_count += 1
-                if not args.quiet:
-                    extractor._log("info", f"✓ {result.get('title', 'Unknown')}")
-            elif result.get('status') == 'duplicate':
-                duplicate_count += 1
-                if not args.quiet:
-                    extractor._log("warning", f"⊘ Duplicate: {result.get('title', 'Unknown')}")
+                # Update progress as complete
+                progress.update(task, completed=len(urls), description="[green][OK] Concurrent extraction complete!")
 
-        elapsed = time.time() - start_time
-        extractor._log("info", f"\nCompleted in {elapsed:.1f} seconds")
+                # Count and display results
+                for result in results:
+                    if result.get('status') == 'success':
+                        success_count += 1
+                    elif result.get('status') == 'duplicate':
+                        duplicate_count += 1
+        else:
+            # Quiet mode - no progress bar
+            results = asyncio.run(extractor.process_urls_concurrently(urls, args.concurrent))
+            for result in results:
+                if result.get('status') == 'success':
+                    success_count += 1
+                elif result.get('status') == 'duplicate':
+                    duplicate_count += 1
 
-    # Process URLs with optional progress bar (sequential)
-    elif HAS_TQDM and tqdm is not None and not args.quiet:
-        progress_bar = tqdm(total=len(urls), desc="Extracting", unit="post")
-        for i, url in enumerate(urls, 1):
-            data = extractor.extract_blog_data(url)
+    # Process URLs with rich progress bar (sequential)
+    elif not args.quiet:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TextColumn("({task.completed}/{task.total})"),
+            TimeElapsedColumn(),
+            console=console
+        ) as progress:
+            task = progress.add_task("[cyan]Extracting blog posts...", total=len(urls))
 
-            if data['status'] == 'success':
-                # Update tqdm description
-                progress_bar.set_postfix({
-                    'platform': data.get('platform', 'unknown'),
-                    'last': data['title'][:30]
-                })
-                success_count += 1
-            elif data['status'] == 'duplicate':
-                duplicate_count += 1
+            for i, url in enumerate(urls, 1):
+                data = extractor.extract_blog_data(url)
 
-            # Update progress bar
-            progress_bar.update(1)
+                if data['status'] == 'success':
+                    platform = data.get('platform', 'unknown')
+                    title = data['title'][:40] + "..." if len(data['title']) > 40 else data['title']
+                    progress.update(task, description=f"[cyan][OK] {platform}: {title}")
+                    success_count += 1
+                elif data['status'] == 'duplicate':
+                    duplicate_count += 1
+                    progress.update(task, description="[yellow][SKIP] Duplicate skipped")
 
-            # Delay between requests
-            if i < len(urls):
-                time.sleep(args.delay)
+                # Update progress
+                progress.advance(task)
 
-        progress_bar.close()
+                # Delay between requests
+                if i < len(urls):
+                    time.sleep(args.delay)
     else:
         # No tqdm - verbose output
         for i, url in enumerate(urls, 1):
@@ -188,7 +233,7 @@ Examples:
             data = extractor.extract_blog_data(url)
 
             if data['status'] == 'success':
-                extractor._log("info", f"✓ Success: {data['title']}")
+                extractor._log("info", f"[OK] Success: {data['title']}")
                 extractor._log("info", f"  Platform: {data.get('platform', 'unknown')}")
                 extractor._log("info", f"  URL: {data['url']}")
                 extractor._log("info", f"  Date: {data['date']}")
@@ -201,10 +246,10 @@ Examples:
                     extractor._log("info", f"  Tags: {', '.join(data['tags'])}")
                 success_count += 1
             elif data['status'] == 'duplicate':
-                extractor._log("warning", f"⊘ Duplicate: {data['title']}")
+                extractor._log("warning", f"[SKIP] Duplicate: {data['title']}")
                 duplicate_count += 1
             else:
-                extractor._log("error", f"✗ Failed - {data.get('error', 'Unknown error')}")
+                extractor._log("error", f"[FAIL] Failed - {data.get('error', 'Unknown error')}")
 
             # Delay between requests
             if i < len(urls):
@@ -227,14 +272,38 @@ Examples:
 
         extractor.save_links_to_txt("extracted_links.txt")
 
-    # Summary
-    extractor._log("info", f"\n=== Summary ===")
-    extractor._log("info", f"Total URLs: {len(urls)}")
-    extractor._log("info", f"Successful: {success_count}")
-    extractor._log("info", f"Duplicates: {duplicate_count}")
-    extractor._log("info", f"Failed: {len(urls) - success_count - duplicate_count}")
-    if len(urls) > 0:
-        extractor._log("info", f"Success rate: {success_count/len(urls)*100:.1f}%")
+    # Summary with rich table
+    if not args.quiet:
+        failed_count = len(urls) - success_count - duplicate_count
+        success_rate = (success_count / len(urls) * 100) if len(urls) > 0 else 0
+
+        table = Table(title="Extraction Summary", show_header=True, header_style="bold magenta")
+        table.add_column("Metric", style="cyan", width=20)
+        table.add_column("Count", justify="right", style="green")
+
+        table.add_row("Total URLs", str(len(urls)))
+        table.add_row("[OK] Successful", f"[green]{success_count}[/green]")
+        table.add_row("[SKIP] Duplicates", f"[yellow]{duplicate_count}[/yellow]")
+        table.add_row("[FAIL] Failed", f"[red]{failed_count}[/red]")
+        table.add_row("Success Rate", f"[bold]{success_rate:.1f}%[/bold]")
+
+        if download_images and extractor.downloaded_images:
+            table.add_row("Images Downloaded", f"[blue]{len(extractor.downloaded_images)}[/blue]")
+
+        console.print("\n")
+        console.print(table)
+    else:
+        # Quiet mode - simple text summary
+        extractor._log("info", "\n=== Summary ===")
+        extractor._log("info", f"Total URLs: {len(urls)}")
+        extractor._log("info", f"Successful: {success_count}")
+        extractor._log("info", f"Duplicates: {duplicate_count}")
+        extractor._log("info", f"Failed: {len(urls) - success_count - duplicate_count}")
+        if len(urls) > 0:
+            extractor._log("info", f"Success rate: {success_count/len(urls)*100:.1f}%")
+
+        if download_images and extractor.downloaded_images:
+            extractor._log("info", f"Images downloaded: {len(extractor.downloaded_images)} to {extractor.images_dir}")
 
     return 0 if success_count == len(urls) else 1
 

@@ -4,13 +4,21 @@ Streamlit Web Interface for Blog Extractor Tool
 Provides a user-friendly web interface for extracting blog posts and converting to WordPress XML.
 """
 
-import streamlit as st
-import time
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 import asyncio
-from typing import List, Dict, Any
+import time
 from datetime import datetime
+from typing import Any, Dict, List
 from urllib.parse import urlparse
-from collections import Counter
+
+import streamlit as st
 
 # Import our blog extractor
 from blog_extractor import BlogExtractor
@@ -177,7 +185,7 @@ def get_url_inputs():
     return valid_urls
 
 
-def get_concurrent_settings() -> tuple[int, bool, bool, bool]:
+def get_concurrent_settings() -> tuple[int, bool, bool, bool, bool]:
     """Get concurrent processing settings - concurrent is default for best performance"""
     st.markdown("### ⚙️ Step 2: Configuration Options")
     st.caption("Configure how your blog posts will be extracted and processed")
@@ -215,13 +223,27 @@ def get_concurrent_settings() -> tuple[int, bool, bool, bool]:
         include_images = st.checkbox(
             "Include images in exported content",
             value=True,
-            help="Extracts images from blog posts. WordPress will download and import them when you check 'Download and import file attachments' during XML import."
+            help="Extracts images from blog posts and includes them in the WordPress XML."
         )
 
         if include_images:
-            st.info("🖼️ Images will be included - WordPress will auto-download them during import")
+            st.info("🖼️ Images will be included in the export")
         else:
             st.info("🚫 Images will be excluded from exported content")
+
+        # Image download option (only show if images are included)
+        download_images = False
+        if include_images:
+            download_images = st.checkbox(
+                "Download images locally (RECOMMENDED)",
+                value=True,
+                help="Downloads images to output/images/ folder. This protects you if source images are removed and gives you full control over hosting."
+            )
+
+            if download_images:
+                st.success("💾 Images will be downloaded locally to output/images/ - you're protected if source images go offline!")
+            else:
+                st.warning("⚠️ Using external image URLs (not recommended) - images may break if source site removes them")
 
         st.markdown("---")
 
@@ -237,7 +259,7 @@ def get_concurrent_settings() -> tuple[int, bool, bool, bool]:
         else:
             st.warning("⚠️ Duplicates will be included - useful for find/replace but may create duplicate posts in WordPress")
 
-    return max_concurrent, relative_links, include_images, skip_duplicates
+    return max_concurrent, relative_links, include_images, skip_duplicates, download_images
 
 def display_find_replace():
     """General-purpose find/replace interface for XML modification"""
@@ -292,7 +314,7 @@ def apply_replacements(xml_content: str) -> str:
 
     return modified_content
 
-def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool = False, include_images: bool = True, skip_duplicates: bool = True):
+def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool = False, include_images: bool = True, skip_duplicates: bool = True, download_images: bool = True):
     """Process URLs with progress tracking (supports async concurrent mode)"""
     if not urls:
         st.error("❌ No valid URLs to process")
@@ -336,11 +358,21 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
             elif 'Success:' in message:
                 # Simplify success messages to just show title
                 st.success(f"✅ {message.replace('✓ Success: ', '')}")
+            elif 'Downloading image:' in message or 'Saved:' in message:
+                # Show image download progress
+                st.info(f"📥 {message}")
             else:
                 st.info(f"ℹ️ {message}")
 
     # Initialize extractor with callback
-    extractor = BlogExtractor(callback=logging_callback, verbose=False, relative_links=relative_links, include_images=include_images, skip_duplicates=skip_duplicates)
+    extractor = BlogExtractor(
+        callback=logging_callback,
+        verbose=False,
+        relative_links=relative_links,
+        include_images=include_images,
+        skip_duplicates=skip_duplicates,
+        download_images=download_images
+    )
 
     # Reset session state
     st.session_state.extraction_results = []
@@ -557,7 +589,7 @@ def display_results():
         with st.expander(f"View {len(st.session_state.duplicate_log)} duplicates"):
             for dup in st.session_state.duplicate_log:
                 st.markdown(f"**[{dup['title']}]({dup['url']})**")
-                st.caption(f"Skipped as duplicate content")
+                st.caption("Skipped as duplicate content")
                 st.markdown("---")
 
     # Error log
@@ -611,7 +643,7 @@ def main():
     urls = get_url_inputs()
 
     # Get concurrent settings
-    max_concurrent, relative_links, include_images, skip_duplicates = get_concurrent_settings()
+    max_concurrent, relative_links, include_images, skip_duplicates, download_images = get_concurrent_settings()
 
     # Step 3: Extract button (after configuration)
     st.markdown("### 🚀 Step 3: Start Extraction")
@@ -637,7 +669,7 @@ def main():
         st.markdown("### 🔄 Extracting Blog Posts...")
 
         with st.spinner("Processing your blog posts..."):
-            process_urls(urls, max_concurrent, relative_links, include_images, skip_duplicates)
+            process_urls(urls, max_concurrent, relative_links, include_images, skip_duplicates, download_images)
     elif st.session_state.is_processing:
         st.warning("⏳ Extraction in progress...")
 

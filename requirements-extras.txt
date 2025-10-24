@@ -1,0 +1,31 @@
+# Optional Enhanced Dependencies
+# Install these for additional capabilities (requires code modifications to use)
+# pip install -r requirements-cli.txt -r requirements-extras.txt
+
+# Better date parsing - handles more date formats automatically
+# Would improve: extract_published_date() - currently uses manual format matching
+python-dateutil>=2.9.0
+
+# Image file type validation - validates downloaded images aren't corrupt
+# Would improve: _download_image() - add validation after download
+filetype>=1.2.0
+
+# URL validation - validates URLs before processing
+# Would improve: URL input validation - catch bad URLs early
+validators>=0.34.0
+
+# Enhanced console output - beautiful progress bars and formatting
+# Would replace: tqdm with rich.progress for better concurrent visualization
+rich>=13.9.0
+
+# Async HTTP client - faster image downloads in concurrent mode
+# Would improve: _download_image() - make it async for parallel downloads
+aiohttp>=3.11.0
+
+# Async file I/O - faster file writes in concurrent mode
+# Would improve: All file operations - make them async
+aiofiles>=24.1.0
+
+# Better HTTP client - modern alternative to requests (sync + async)
+# Would replace: requests library - cleaner API, better performance
+httpx>=0.28.0

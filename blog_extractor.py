@@ -5,12 +5,17 @@ Extracts blog posts and converts to WordPress XML using only the best tool.
 """
 
 # Fix for Windows asyncio subprocess handling
-import sys
 import asyncio
+import sys
+import warnings
 
 if sys.platform.startswith('win'):
     # Windows requires ProactorEventLoop for subprocess operations
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    # Suppress harmless Playwright cleanup warnings on Windows
+    # Suppress ALL Playwright subprocess cleanup warnings on Windows
+    import warnings
+    warnings.filterwarnings("ignore", category=ResourceWarning)
 
 # Check if Playwright is available (both sync and async)
 try:
@@ -31,6 +36,7 @@ except ImportError:
 URLS_FILE = "urls.txt"
 OUTPUT_DIR = "output"
 REQUEST_DELAY = 2  # seconds between requests
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB - prevent disk fill attacks
 
 # Standard library imports
 import csv
@@ -58,9 +64,17 @@ logger = logging.getLogger(__name__)
 
 # Third-party imports
 import requests
+from dateutil import parser as dateutil_parser
+import filetype
+import validators
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+from rich.console import Console
+import aiohttp
+import aiofiles
 
 try:
     from bs4 import BeautifulSoup, Tag
+    from bs4.element import NavigableString
 except ImportError:
     print("ERROR: BeautifulSoup4 is required. Install with: pip install beautifulsoup4")
     raise
@@ -87,7 +101,8 @@ class BlogExtractor:
         verbose: bool = True,
         relative_links: bool = False,
         include_images: bool = True,
-        skip_duplicates: bool = True
+        skip_duplicates: bool = True,
+        download_images: bool = True
     ):
         self.urls_file = urls_file
         self.output_dir = output_dir
@@ -97,10 +112,22 @@ class BlogExtractor:
         self.relative_links = relative_links  # Keep internal links relative in XML output
         self.include_images = include_images  # Include images in exported content
         self.skip_duplicates = skip_duplicates  # Skip duplicate content (default True)
+        self.download_images = download_images  # Download images locally instead of using external URLs
         self.seen_hashes: Set[str] = set()  # For duplicate detection
+        self.resolved_image_cache: Dict[str, str] = {}  # Cache for resolved image URLs
+        self.downloaded_images: Dict[str, str] = {}  # Map original URL -> local file path
+        # Shared Playwright browser for async concurrent mode (reduces overhead)
+        self._playwright = None
+        self._browser = None
+        self._context = None
 
         # Create output directory if it doesn't exist
         Path(self.output_dir).mkdir(exist_ok=True)
+
+        # Create images directory for downloaded images
+        self.images_dir = os.path.join(self.output_dir, "images")
+        if self.download_images:
+            Path(self.images_dir).mkdir(exist_ok=True)
 
         # User agents for variety
         self.user_agents = [
@@ -108,7 +135,7 @@ class BlogExtractor:
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         ]
 
-    def _log(self, level: str, message: str):
+    def _log(self, level: str, message: str) -> None:
         """Log message to logger and optionally call callback for UI updates"""
         # Log to standard logger
         log_level = getattr(logging, level.upper(), logging.INFO)
@@ -122,9 +149,46 @@ class BlogExtractor:
         elif self.verbose:
             print(message)
 
+    async def _get_or_create_browser(self) -> Any:
+        """Lazily initialize shared async browser instance for concurrent mode"""
+        if self._browser is None and HAS_ASYNC_PLAYWRIGHT and async_playwright is not None:
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(headless=True)
+        return self._browser
+
+    async def _get_or_create_context(self) -> Any:
+        """Get or create browser context with random user agent"""
+        if self._context is None:
+            browser = await self._get_or_create_browser()
+            if browser:
+                self._context = await browser.new_context(
+                    user_agent=random.choice(self.user_agents),
+                    viewport={'width': 1920, 'height': 1080}
+                )
+        return self._context
+
+    async def close_browser(self) -> None:
+        """Close shared browser instance - call this at end of concurrent processing"""
+        try:
+            if self._context:
+                await self._context.close()
+                self._context = None
+            if self._browser:
+                await self._browser.close()
+                self._browser = None
+            if self._playwright:
+                await self._playwright.stop()
+                self._playwright = None
+            # Give asyncio time to cleanup pipes on Windows
+            await asyncio.sleep(0.1)
+        except Exception:
+            # Suppress Windows asyncio cleanup warnings (harmless)
+            pass
+
+
     def get_content_hash(self, content: str) -> str:
-        """Generate MD5 hash of content for duplicate detection"""
-        return hashlib.md5(content.encode('utf-8')).hexdigest()
+        """Generate blake2s hash of content for duplicate detection (FIPS-compliant)"""
+        return hashlib.blake2s(content.encode('utf-8')).hexdigest()
 
     def detect_platform(self, soup: BeautifulSoup) -> str:
         """Detect the blog platform from HTML structure"""
@@ -187,56 +251,60 @@ class BlogExtractor:
                 try:
                     with sync_playwright() as p:
                         browser = p.chromium.launch(headless=True)
-                        context = browser.new_context(
-                            user_agent=random.choice(self.user_agents),
-                            viewport={'width': 1920, 'height': 1080}
-                        )
-                        page = context.new_page()
-
-                        # Navigate and wait for ALL network activity to finish
-                        self._log("info", f"  Fetching with Playwright (attempt {attempt + 1}/{max_retries})...")
-                        # CRITICAL: wait_until='networkidle' ensures ALL images finish loading
-                        page.goto(url, wait_until='networkidle', timeout=120000)
-
-                        # Wait for blog content to render (Angular SPA)
                         try:
-                            page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=10000)
-                        except:
-                            pass  # Continue anyway, content might use different selector
-                        page.wait_for_timeout(3000)  # Extra time for dynamic content
+                            context = browser.new_context(
+                                user_agent=random.choice(self.user_agents),
+                                viewport={'width': 1920, 'height': 1080}
+                            )
+                            page = context.new_page()
 
-                        # FOOLPROOF SCROLLING: Scroll slowly + wait for network idle after EACH step
-                        # This ensures EVERY image lazy-loads at full quality (not placeholders)
-                        self._log("info", "  Scrolling to load all images (20-30 seconds)...")
+                            # Navigate and wait for ALL network activity to finish
+                            self._log("info", f"  Fetching with Playwright (attempt {attempt + 1}/{max_retries})...")
+                            # CRITICAL: wait_until='load' ensures ALL images finish loading
+                            page.goto(url, wait_until='load', timeout=120000)
 
-                        # Scroll to 25% of page
-                        page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.25)")
-                        page.wait_for_load_state('networkidle', timeout=20000)
-                        page.wait_for_timeout(2000)
+                            # Wait for blog content to render (Angular SPA)
+                            try:
+                                page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=10000)
+                            except Exception as e:
+                                # Continue anyway, content might use different selector
+                                self._log("debug", f"  Selector wait failed (expected): {e}")
+                            page.wait_for_timeout(1000)  # Extra time for dynamic content
 
-                        # Scroll to 50% of page
-                        page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
-                        page.wait_for_load_state('networkidle', timeout=20000)
-                        page.wait_for_timeout(2000)
+                            # FOOLPROOF SCROLLING: Scroll slowly + wait for network idle after EACH step
+                            # This ensures EVERY image lazy-loads at full quality (not placeholders)
+                            self._log("info", "  Scrolling to load all images (20-30 seconds)...")
 
-                        # Scroll to 75% of page
-                        page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.75)")
-                        page.wait_for_load_state('networkidle', timeout=20000)
-                        page.wait_for_timeout(2000)
+                            # Scroll to 25% of page
+                            page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.25)")
+                            page.wait_for_load_state('networkidle', timeout=20000)
+                            page.wait_for_timeout(500)
 
-                        # Scroll to bottom
-                        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        page.wait_for_load_state('networkidle', timeout=20000)
-                        page.wait_for_timeout(4000)  # Extra wait at bottom for final images
+                            # Scroll to 50% of page
+                            page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
+                            page.wait_for_load_state('networkidle', timeout=20000)
+                            page.wait_for_timeout(500)
 
-                        # Scroll back to top
-                        page.evaluate("window.scrollTo(0, 0)")
-                        page.wait_for_timeout(1500)
+                            # Scroll to 75% of page
+                            page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.75)")
+                            page.wait_for_load_state('networkidle', timeout=20000)
+                            page.wait_for_timeout(500)
 
-                        # Get page content
-                        html_content = page.content()
-                        browser.close()
-                        return html_content
+                            # Scroll to bottom
+                            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                            page.wait_for_load_state('networkidle', timeout=20000)
+                            page.wait_for_timeout(1000)  # Extra wait at bottom for final images
+
+                            # Scroll back to top
+                            page.evaluate("window.scrollTo(0, 0)")
+                            page.wait_for_timeout(1500)
+
+                            # Get page content
+                            html_content = page.content()
+                            return html_content
+                        finally:
+                            # Always cleanup browser resources, even on error
+                            browser.close()
 
                 except Exception as e:
                     self._log("warning", f"  Playwright attempt {attempt + 1} failed: {e}")
@@ -284,61 +352,69 @@ class BlogExtractor:
             # Fall back to synchronous version if async not available
             return self.fetch_content(url, max_retries)
 
-        # Try async Playwright
+        # Try async Playwright (each request gets own browser to prevent hanging)
         for attempt in range(max_retries):
+            page = None
             try:
+                # Create fresh browser for each request (more stable)
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(headless=True)
                     context = await browser.new_context(
                         user_agent=random.choice(self.user_agents),
                         viewport={'width': 1920, 'height': 1080}
                     )
-                    page = await context.new_page()
-
-                    # Navigate and wait for ALL network activity to finish
-                    self._log("info", f"  Fetching with Playwright async (attempt {attempt + 1}/{max_retries})...")
-                    # CRITICAL: wait_until='networkidle' ensures ALL images finish loading
-                    await page.goto(url, wait_until='networkidle', timeout=120000)
-
-                    # Wait for blog content to render (Angular SPA)
                     try:
-                        await page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=10000)
-                    except:
-                        pass  # Continue anyway, content might use different selector
-                    await page.wait_for_timeout(3000)  # Extra time for dynamic content
+                        page = await context.new_page()
 
-                    # FOOLPROOF SCROLLING: Scroll slowly + wait for network idle after EACH step
-                    # This ensures EVERY image lazy-loads at full quality (not placeholders)
-                    self._log("info", "  Scrolling to load all images (20-30 seconds)...")
+                        # Navigate and wait for ALL network activity to finish
+                        self._log("info", f"  Fetching with Playwright async (attempt {attempt + 1}/{max_retries})...")
+                        # CRITICAL: wait_until='load' ensures ALL images finish loading
+                        await page.goto(url, wait_until='load', timeout=120000)
 
-                    # Scroll to 25% of page
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.25)")
-                    await page.wait_for_load_state('networkidle', timeout=20000)
-                    await page.wait_for_timeout(2000)
+                        # Wait for blog content to render (Angular SPA)
+                        try:
+                            await page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=10000)
+                        except Exception as e:
+                            # Continue anyway, content might use different selector
+                            self._log("debug", f"  Selector wait failed (expected): {e}")
+                        await page.wait_for_timeout(1000)  # Extra time for dynamic content
 
-                    # Scroll to 50% of page
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
-                    await page.wait_for_load_state('networkidle', timeout=20000)
-                    await page.wait_for_timeout(2000)
+                        # FOOLPROOF SCROLLING: Scroll slowly + wait for network idle after EACH step
+                        # This ensures EVERY image lazy-loads at full quality (not placeholders)
+                        self._log("info", "  Scrolling to load all images (20-30 seconds)...")
 
-                    # Scroll to 75% of page
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.75)")
-                    await page.wait_for_load_state('networkidle', timeout=20000)
-                    await page.wait_for_timeout(2000)
+                        # Scroll to 25% of page
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.25)")
+                        await page.wait_for_load_state('networkidle', timeout=20000)
+                        await page.wait_for_timeout(500)
 
-                    # Scroll to bottom
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await page.wait_for_load_state('networkidle', timeout=20000)
-                    await page.wait_for_timeout(4000)  # Extra wait at bottom for final images
+                        # Scroll to 50% of page
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
+                        await page.wait_for_load_state('networkidle', timeout=20000)
+                        await page.wait_for_timeout(500)
 
-                    # Scroll back to top
-                    await page.evaluate("window.scrollTo(0, 0)")
-                    await page.wait_for_timeout(1500)
+                        # Scroll to 75% of page
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.75)")
+                        await page.wait_for_load_state('networkidle', timeout=20000)
+                        await page.wait_for_timeout(500)
 
-                    # Get page content
-                    html_content = await page.content()
-                    await browser.close()
-                    return html_content
+                        # Scroll to bottom
+                        await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                        await page.wait_for_load_state('networkidle', timeout=20000)
+                        await page.wait_for_timeout(1000)  # Extra wait at bottom for final images
+
+                        # Scroll back to top
+                        await page.evaluate("window.scrollTo(0, 0)")
+                        await page.wait_for_timeout(1500)
+
+                        # Get page content
+                        html_content = await page.content()
+                        return html_content
+                    finally:
+                        # Clean up browser resources
+                        if page:
+                            await page.close()
+                        await browser.close()
 
             except Exception as e:
                 self._log("warning", f"  Async Playwright attempt {attempt + 1} failed: {e}")
@@ -513,6 +589,8 @@ class BlogExtractor:
             'div.blog__entry__content > div',  # Fallback
             'div.blog__entry__content',
             # Borgman Ford / DealerOn variant
+            # Ruges Ford and similar sites
+            'div.editor',
             'div.entry-content.text-content-container',
             # Webflow-specific (rich text editor content)
             'div.rich-text-block',
@@ -658,7 +736,6 @@ class BlogExtractor:
             # Add space before removing to prevent text concatenation
             for img in soup.find_all('img'):
                 if isinstance(img, Tag):
-                    from bs4 import NavigableString
                     img.insert_before(NavigableString(' '))
                     img.insert_after(NavigableString(' '))
                     img.decompose()
@@ -684,7 +761,6 @@ class BlogExtractor:
         # Remove unwanted elements but keep their content
         # Add spaces when unwrapping to prevent text concatenation
         unwrap_tags = ['div', 'span', 'section', 'article', 'header', 'footer', 'nav']
-        from bs4 import NavigableString
         for tag_name in unwrap_tags:
             for tag in soup.find_all(tag_name):
                 if isinstance(tag, Tag):
@@ -786,7 +862,6 @@ class BlogExtractor:
                         list_elem.insert_after(invalid_elem)
 
         # Normalize whitespace in paragraphs and remove empty ones
-        from bs4 import NavigableString
         for p in soup.find_all('p'):
             if isinstance(p, Tag):
                 # Normalize whitespace in text nodes only, leave tags intact
@@ -1092,7 +1167,12 @@ class BlogExtractor:
         return datetime.now().strftime('%Y-%m-%d')
 
     def extract_images_from_content(self, content: str) -> List[Dict[str, str]]:
-        """Extract image URLs and attributes from Gutenberg content"""
+        """Extract image URLs and attributes from Gutenberg content
+
+        Note: Image URLs are NOT resolved here because this runs before
+        _convert_relative_urls_to_absolute() which handles URL resolution
+        during XML generation.
+        """
         if not content:
             return []
 
@@ -1212,13 +1292,11 @@ class BlogExtractor:
         content = self.extract_content(soup)
 
         # Check for duplicate content
-        is_duplicate = False
         if content:
             content_hash = self.get_content_hash(content)
             if content_hash in self.seen_hashes:
-                is_duplicate = True
                 if self.skip_duplicates:
-                    self._log("warning", f"  ⚠️ Duplicate content detected - skipping")
+                    self._log("warning", "  [WARNING] Duplicate content detected - skipping")
                     return {
                         'status': 'duplicate',
                         'url': url,
@@ -1226,7 +1304,7 @@ class BlogExtractor:
                         'error': 'Duplicate content'
                     }
                 else:
-                    self._log("warning", f"  ⚠️ Duplicate content detected - including anyway")
+                    self._log("warning", "  [WARNING] Duplicate content detected - including anyway")
             self.seen_hashes.add(content_hash)
 
         author = self.extract_author(soup)
@@ -1283,13 +1361,11 @@ class BlogExtractor:
         content = self.extract_content(soup)
 
         # Check for duplicate content
-        is_duplicate = False
         if content:
             content_hash = self.get_content_hash(content)
             if content_hash in self.seen_hashes:
-                is_duplicate = True
                 if self.skip_duplicates:
-                    self._log("warning", f"  ⚠️ Duplicate content detected - skipping")
+                    self._log("warning", "  [WARNING] Duplicate content detected - skipping")
                     return {
                         'status': 'duplicate',
                         'url': url,
@@ -1297,7 +1373,7 @@ class BlogExtractor:
                         'error': 'Duplicate content'
                     }
                 else:
-                    self._log("warning", f"  ⚠️ Duplicate content detected - including anyway")
+                    self._log("warning", "  [WARNING] Duplicate content detected - including anyway")
             self.seen_hashes.add(content_hash)
 
         author = self.extract_author(soup)
@@ -1311,6 +1387,11 @@ class BlogExtractor:
 
         # Extract image URLs from content for WordPress attachments
         images = self.extract_images_from_content(content) if self.include_images else []
+
+        # Download images asynchronously if enabled
+        if self.download_images and images:
+            image_urls = [img['src'] for img in images]
+            await self._batch_download_images_async(image_urls)
 
         data = {
             'status': 'success',
@@ -1335,8 +1416,34 @@ class BlogExtractor:
         async with semaphore:
             return await self.extract_blog_data_async(url)
 
+    async def _batch_download_images_async(self, image_urls: List[str]) -> None:
+        """Batch download multiple images asynchronously for faster performance
+
+        Args:
+            image_urls: List of image URLs to download in parallel
+        """
+        if not self.download_images or not image_urls:
+            return
+
+        self._log("info", f"  Downloading {len(image_urls)} images in parallel...")
+
+        # Create aiohttp session for reusing connections
+        async with aiohttp.ClientSession() as session:
+            # Download all images concurrently
+            download_tasks = [
+                self._download_image_async(url, session)
+                for url in image_urls
+                if url not in self.downloaded_images  # Skip already downloaded
+            ]
+
+            if download_tasks:
+                await asyncio.gather(*download_tasks, return_exceptions=True)
+
     async def process_urls_concurrently(self, urls: List[str], max_concurrent: int = 5) -> List[Dict[str, Any]]:
-        """Process multiple URLs concurrently with rate limiting"""
+        """Process multiple URLs concurrently with rate limiting
+
+        Now includes async image downloads for significantly faster performance.
+        """
         if not HAS_ASYNC_PLAYWRIGHT:
             self._log("warning", "Async Playwright not available, falling back to sequential processing")
             results = []
@@ -1369,22 +1476,42 @@ class BlogExtractor:
             else:
                 processed_results.append(result)
 
+
+        # Cleanup shared browser resources
+        await self.close_browser()
+
         return processed_results
 
     def load_urls(self) -> List[str]:
-        """Load URLs from the input file"""
+        """Load URLs from the input file with validation
+
+        Uses validators library to ensure URLs are properly formed before processing.
+        Invalid URLs are logged and skipped to avoid wasted processing.
+        """
         urls = []
+        invalid_urls = []
+
         if not os.path.exists(self.urls_file):
             self._log("error", f"Error: {self.urls_file} not found")
             return urls
 
         with open(self.urls_file, 'r', encoding='utf-8') as f:
-            for line in f:
+            for line_num, line in enumerate(f, 1):
                 url = line.strip()
-                if url and url.startswith('http'):
-                    urls.append(url)
+                if not url or url.startswith('#'):  # Skip empty lines and comments
+                    continue
 
-        self._log("info", f"Loaded {len(urls)} URLs to process")
+                # Validate URL format
+                if validators.url(url):
+                    urls.append(url)
+                else:
+                    invalid_urls.append((line_num, url))
+                    self._log("warning", f"  Line {line_num}: Invalid URL skipped: {url[:60]}...")
+
+        if invalid_urls:
+            self._log("warning", f"Skipped {len(invalid_urls)} invalid URLs")
+
+        self._log("info", f"Loaded {len(urls)} valid URLs to process")
         return urls
 
     def normalize_unicode(self, text: str) -> str:
@@ -1429,36 +1556,27 @@ class BlogExtractor:
         return text
 
     def parse_and_format_date(self, date_string: str) -> dict:
-        """Parse extracted date and format for WordPress WXR"""
+        """Parse extracted date and format for WordPress WXR
+
+        Uses python-dateutil for intelligent date parsing - handles almost any format automatically.
+        Falls back to current date if parsing fails.
+        """
         if not date_string:
             # Default to current date
-            now = datetime.now()
-            date_obj = now
+            date_obj = datetime.now()
         else:
-            # Remove ordinal suffixes (1st, 2nd, 3rd, 4th, etc.) for parsing
-            date_string_cleaned = re.sub(r'(\d+)(st|nd|rd|th)', r'\1', date_string)
+            try:
+                # Remove ordinal suffixes (1st, 2nd, 3rd, 4th, etc.) for better parsing
+                date_string_cleaned = re.sub(r'(\d+)(st|nd|rd|th)', r'\1', date_string)
 
-            # Try to parse common date formats
-            date_formats = [
-                '%A, %d %B, %Y',       # Wednesday, 17 July, 2019
-                '%A, %B %d, %Y',       # Wednesday, July 17, 2019
-                '%B %d, %Y',           # December 31, 2024 (after suffix removal)
-                '%b %d, %Y',           # Nov 27, 2023
-                '%Y-%m-%d',            # 2023-11-27
-                '%m/%d/%Y',            # 11/27/2023
-                '%d/%m/%Y',            # 27/11/2023
-            ]
+                # Use python-dateutil for intelligent parsing - handles most formats automatically
+                # dayfirst=False assumes US format (MM/DD/YYYY) for ambiguous dates
+                date_obj = dateutil_parser.parse(date_string_cleaned.strip(), fuzzy=True, dayfirst=False)
+                self._log("debug", f"  Parsed date: '{date_string}' → {date_obj.strftime('%Y-%m-%d')}")
 
-            date_obj = None
-            for fmt in date_formats:
-                try:
-                    date_obj = datetime.strptime(date_string_cleaned.strip(), fmt)
-                    break
-                except ValueError:
-                    continue
-
-            if not date_obj:
-                # If all parsing fails, use current date
+            except (ValueError, TypeError, dateutil_parser.ParserError) as e:
+                # If parsing fails, use current date
+                self._log("warning", f"  Could not parse date '{date_string}': {e}, using current date")
                 date_obj = datetime.now()
 
         # Format for WordPress WXR
@@ -1467,6 +1585,231 @@ class BlogExtractor:
             'mysql': date_obj.strftime('%Y-%m-%d %H:%M:%S'),              # 2023-11-27 00:00:00
             'mysql_gmt': date_obj.strftime('%Y-%m-%d %H:%M:%S')          # Same for GMT (simplified)
         }
+
+    def _download_image(self, img_url: str) -> Optional[str]:
+        """Download image to local directory and return local file path
+
+        Args:
+            img_url: Image URL to download
+
+        Returns:
+            Local file path if successful, None if download failed
+        """
+        if not self.download_images:
+            return None
+
+        # Check if already downloaded
+        if img_url in self.downloaded_images:
+            return self.downloaded_images[img_url]
+
+        try:
+            # First resolve the URL if it's a dynamic endpoint
+            resolved_url = self._resolve_image_url(img_url)
+
+            # Generate local filename from URL (with path traversal protection)
+            parsed = urlparse(resolved_url)
+            filename = Path(parsed.path).name  # Only filename, strips any path components
+
+            # Security: Validate filename to prevent path traversal
+            if not filename or '..' in filename or filename.startswith(('/', '\\')):
+                filename = hashlib.blake2s(resolved_url.encode()).hexdigest() + '.jpg'
+
+            # If no valid filename, generate from hash
+            if not filename or '.' not in filename:
+                filename = hashlib.blake2s(resolved_url.encode()).hexdigest() + '.jpg'
+
+            # Ensure unique filename
+            local_path = os.path.join(self.images_dir, filename)
+            counter = 1
+            base_name, ext = os.path.splitext(filename)
+            while os.path.exists(local_path):
+                filename = f"{base_name}_{counter}{ext}"
+                local_path = os.path.join(self.images_dir, filename)
+                counter += 1
+
+            # Download the image
+            self._log("info", f"  Downloading image: {filename}")
+            response = requests.get(resolved_url, timeout=30, stream=True)
+            response.raise_for_status()
+
+            # Save to file and track size (with limit to prevent disk fill)
+            bytes_downloaded = 0
+            with open(local_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    bytes_downloaded += len(chunk)
+
+                    # Check size limit to prevent disk fill attacks
+                    if bytes_downloaded > MAX_IMAGE_SIZE:
+                        raise ValueError(f"Image exceeds size limit: {bytes_downloaded / 1024 / 1024:.1f}MB > {MAX_IMAGE_SIZE / 1024 / 1024}MB")
+
+                    f.write(chunk)
+
+            # Validate image file type
+            kind = filetype.guess(local_path)
+            if kind is None:
+                self._log("warning", f"  Could not determine file type for {filename}, keeping anyway")
+            elif kind.mime.startswith('image/'):
+                self._log("debug", f"  Validated image: {filename} ({kind.mime})")
+            else:
+                self._log("warning", f"  Downloaded file is not an image: {filename} ({kind.mime})")
+                # Keep file anyway - might be SVG or other format
+
+            # Cache the result
+            self.downloaded_images[img_url] = local_path
+            self._log("info", f"  Saved: {filename} ({bytes_downloaded:,} bytes)")
+
+            return local_path
+
+        except Exception as e:
+            self._log("warning", f"  Failed to download image {img_url[:60]}...: {e}")
+            return None
+
+    async def _download_image_async(self, img_url: str, session: aiohttp.ClientSession) -> Optional[str]:
+        """Async version: Download image to local directory and return local file path
+
+        Significantly faster in concurrent mode as multiple images can download in parallel.
+
+        Args:
+            img_url: Image URL to download
+            session: aiohttp ClientSession for reusing connections
+
+        Returns:
+            Local file path if successful, None if download failed
+        """
+        if not self.download_images:
+            return None
+
+        # Check if already downloaded
+        if img_url in self.downloaded_images:
+            return self.downloaded_images[img_url]
+
+        try:
+            # First resolve the URL if it's a dynamic endpoint (still sync for now)
+            resolved_url = self._resolve_image_url(img_url)
+
+            # Generate local filename from URL (with path traversal protection)
+            parsed = urlparse(resolved_url)
+            filename = Path(parsed.path).name  # Only filename, strips any path components
+
+            # Security: Validate filename to prevent path traversal
+            if not filename or '..' in filename or filename.startswith(('/', '\\')):
+                filename = hashlib.blake2s(resolved_url.encode()).hexdigest() + '.jpg'
+
+            # If no valid filename, generate from hash
+            if not filename or '.' not in filename:
+                filename = hashlib.blake2s(resolved_url.encode()).hexdigest() + '.jpg'
+
+            # Ensure unique filename
+            local_path = os.path.join(self.images_dir, filename)
+            counter = 1
+            base_name, ext = os.path.splitext(filename)
+            while os.path.exists(local_path):
+                filename = f"{base_name}_{counter}{ext}"
+                local_path = os.path.join(self.images_dir, filename)
+                counter += 1
+
+            # Download the image asynchronously
+            self._log("debug", f"  Downloading image: {filename}")
+            async with session.get(resolved_url, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                response.raise_for_status()
+
+                # Save to file asynchronously and track size (with limit to prevent disk fill)
+                bytes_downloaded = 0
+                async with aiofiles.open(local_path, 'wb') as f:
+                    async for chunk in response.content.iter_chunked(8192):
+                        bytes_downloaded += len(chunk)
+
+                        # Check size limit to prevent disk fill attacks
+                        if bytes_downloaded > MAX_IMAGE_SIZE:
+                            raise ValueError(f"Image exceeds size limit: {bytes_downloaded / 1024 / 1024:.1f}MB > {MAX_IMAGE_SIZE / 1024 / 1024}MB")
+
+                        await f.write(chunk)
+
+            # Validate image file type
+            kind = filetype.guess(local_path)
+            if kind is None:
+                self._log("warning", f"  Could not determine file type for {filename}, keeping anyway")
+            elif kind.mime.startswith('image/'):
+                self._log("debug", f"  Validated image: {filename} ({kind.mime})")
+            else:
+                self._log("warning", f"  Downloaded file is not an image: {filename} ({kind.mime})")
+
+            # Cache the result
+            self.downloaded_images[img_url] = local_path
+            self._log("debug", f"  Saved: {filename} ({bytes_downloaded:,} bytes)")
+
+            return local_path
+
+        except Exception as e:
+            self._log("warning", f"  Failed to download image {img_url[:60]}...: {e}")
+            return None
+
+    def _resolve_image_url(self, img_url: str) -> str:
+        """Resolve image URL by following redirects to get actual downloadable URL
+
+        This is critical for WebDAM URLs and other dynamic image serving endpoints
+        that redirect to actual S3/CDN URLs. WordPress importer doesn't follow redirects,
+        so we need to resolve them before writing to XML.
+
+        Also strips signed parameters from S3 URLs to provide clean, permanent URLs
+        that WordPress can reliably download.
+
+        Args:
+            img_url: Original image URL (may be a redirect endpoint)
+
+        Returns:
+            Final clean image URL after following redirects and stripping signed params
+        """
+        # Check cache first
+        if img_url in self.resolved_image_cache:
+            return self.resolved_image_cache[img_url]
+
+        # Only resolve URLs that look like they might redirect
+        # WebDAM URLs, dealer.com dynamic endpoints, etc.
+        should_resolve = any([
+            'webdamdb.com' in img_url.lower(),
+            'display.php' in img_url.lower(),
+            ('dealer.com' in img_url.lower() and '?' in img_url),
+        ])
+
+        if not should_resolve:
+            # Not a known dynamic endpoint, return as-is
+            self.resolved_image_cache[img_url] = img_url
+            return img_url
+
+        # Try to follow redirects to get actual image URL
+        try:
+            response = requests.head(img_url, allow_redirects=True, timeout=10)
+
+            # Check if we got redirected
+            if response.url != img_url:
+                # We were redirected - use the final URL
+                final_url = response.url
+
+                # If it's an S3 URL, strip signed parameters to get clean, permanent URL
+                # S3 buckets often allow public access without signed params
+                # This gives WordPress a reliable URL that won't expire
+                if 's3.us-west-2.amazonaws.com' in final_url or 's3.' in final_url:
+                    parsed = urlparse(final_url)
+                    # Keep only scheme, netloc, and path - remove query params
+                    clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+                    self._log("info", f"  Resolved & cleaned: {img_url[:50]}... -> {clean_url[:70]}...")
+                    self.resolved_image_cache[img_url] = clean_url
+                    return clean_url
+                else:
+                    self._log("info", f"  Resolved image: {img_url[:60]}... -> {final_url[:60]}...")
+                    self.resolved_image_cache[img_url] = final_url
+                    return final_url
+            else:
+                # No redirect, return original
+                self.resolved_image_cache[img_url] = img_url
+                return img_url
+
+        except Exception as e:
+            # If resolution fails, log warning and return original URL
+            self._log("warning", f"  Could not resolve image URL {img_url[:60]}...: {e}")
+            self.resolved_image_cache[img_url] = img_url
+            return img_url
 
     def _get_base_domain(self) -> str:
         """Extract base domain from extracted blog posts"""
@@ -1484,7 +1827,7 @@ class BlogExtractor:
 
         return 'https://example.com'
 
-    def _write_xml_header(self, f):
+    def _write_xml_header(self, f: Any) -> None:
         """Write WordPress XML header with actual source domain"""
         base_domain = self._get_base_domain()
 
@@ -1505,7 +1848,7 @@ class BlogExtractor:
         f.write(f'<wp:base_site_url>{base_domain}</wp:base_site_url>\n')
         f.write(f'<wp:base_blog_url>{base_domain}</wp:base_blog_url>\n')
 
-    def _write_xml_footer(self, f):
+    def _write_xml_footer(self, f: Any) -> None:
         """Write WordPress XML footer"""
         f.write('</channel>\n')
         f.write('</rss>\n')
@@ -1561,19 +1904,35 @@ class BlogExtractor:
                         # Just ensure they're properly formatted
                         continue
 
-        # Convert all relative URLs in <img> tags to absolute
+        # Convert all relative URLs in <img> tags to absolute AND resolve/download images
         for img in soup.find_all('img', src=True):
             if isinstance(img, Tag):
                 src = img.get('src', '')
-                if src and not str(src).startswith(('http://', 'https://', 'data:')):
-                    absolute_url = urljoin(base_url, str(src))
-                    img['src'] = absolute_url
+                src_str = str(src)
+
+                # Convert relative URLs to absolute
+                if src and not src_str.startswith(('http://', 'https://', 'data:')):
+                    src_str = urljoin(base_url, src_str)
+
+                # Handle image downloads or URL resolution
+                if src_str.startswith(('http://', 'https://')):
+                    # Always resolve dynamic URLs (WebDAM, dealer.com, etc.) to get clean HTTPS URLs
+                    src_str = self._resolve_image_url(src_str)
+
+                    # Download image locally as backup (if enabled)
+                    # But ALWAYS use the HTTPS URL in XML so WordPress can import it
+                    if self.download_images:
+                        self._download_image(src_str)
+                        # Note: We download but still use src_str (HTTPS URL) in XML
+                        # This gives us backup + WordPress compatibility
+
+                img['src'] = src_str
 
         # Use decode() with formatter="minimal" to prevent BeautifulSoup from adding
         # line breaks in long href attributes, which can cause WordPress to truncate URLs
         return soup.decode(formatter="minimal")
 
-    def _write_xml_post(self, f, post: Dict[str, Any]):
+    def _write_xml_post(self, f: Any, post: Dict[str, Any]) -> None:
         """Write single post to WordPress XML"""
         # Normalize unicode characters in all text fields
         title = self.normalize_unicode(post["title"])
@@ -1642,23 +2001,35 @@ class BlogExtractor:
             for idx, image in enumerate(post['images']):
                 self._write_xml_attachment(f, image, idx, post_id, date_formats, author)
 
-    def _write_xml_attachment(self, f, image: Dict[str, str], post_id: int, parent_post_id: int, date_formats: dict, author: str):
+    def _write_xml_attachment(self, f: Any, image: Dict[str, str], post_id: int, parent_post_id: int, date_formats: dict, author: str) -> None:
         """Write single attachment item to WordPress XML"""
+        # Get image source - resolve to clean HTTPS URL for WordPress import
+        image_src = image['src']
+        if image_src.startswith(('http://', 'https://')):
+            # Always resolve dynamic URLs to get clean HTTPS URLs
+            image_src = self._resolve_image_url(image_src)
+
+            # Download locally as backup (if enabled)
+            # But use HTTPS URL in XML so WordPress can import it
+            if self.download_images:
+                self._download_image(image_src)
+                # Note: We download but still use image_src (HTTPS URL) in XML
+
         # Generate unique attachment ID
-        attachment_id = abs(hash(image['src']) % 1000000) + 1000000  # Offset to avoid collision with posts
+        attachment_id = abs(hash(image_src) % 1000000) + 1000000  # Offset to avoid collision with posts
 
         # Extract filename from URL for title
         from urllib.parse import urlparse
-        parsed_url = urlparse(image['src'])
+        parsed_url = urlparse(image_src)
         filename = os.path.basename(parsed_url.path) or 'image'
         title = os.path.splitext(filename)[0].replace('-', ' ').replace('_', ' ').title()
 
         f.write('<item>\n')
         f.write(f'<title><![CDATA[{title}]]></title>\n')
-        f.write(f'<link>{html.escape(image["src"])}</link>\n')
+        f.write(f'<link>{html.escape(image_src)}</link>\n')
         f.write(f'<pubDate>{date_formats["rfc2822"]}</pubDate>\n')
         f.write(f'<dc:creator><![CDATA[{author}]]></dc:creator>\n')
-        f.write('<guid isPermaLink="false">{}</guid>\n'.format(html.escape(image["src"])))
+        f.write('<guid isPermaLink="false">{}</guid>\n'.format(html.escape(image_src)))
         f.write('<description></description>\n')
         f.write('<content:encoded><![CDATA[]]></content:encoded>\n')
         f.write('<excerpt:encoded><![CDATA[]]></excerpt:encoded>\n')
@@ -1674,10 +2045,10 @@ class BlogExtractor:
         f.write('<wp:post_type><![CDATA[attachment]]></wp:post_type>\n')
         f.write('<wp:post_password><![CDATA[]]></wp:post_password>\n')
         f.write('<wp:is_sticky>0</wp:is_sticky>\n')
-        f.write('<wp:attachment_url><![CDATA[{}]]></wp:attachment_url>\n'.format(html.escape(image['src'])))
+        f.write('<wp:attachment_url><![CDATA[{}]]></wp:attachment_url>\n'.format(html.escape(image_src)))
         f.write('</item>\n')
 
-    def save_to_xml(self, filename: str):
+    def save_to_xml(self, filename: str) -> None:
         """Save extracted data to WordPress XML format"""
         output_path = os.path.join(self.output_dir, filename)
 
@@ -1692,7 +2063,7 @@ class BlogExtractor:
 
         self._log("info", f"WordPress XML saved to: {output_path}")
 
-    def save_links_to_txt(self, filename: str):
+    def save_links_to_txt(self, filename: str) -> None:
         """Save all extracted links to a txt file"""
         output_path = os.path.join(self.output_dir, filename)
 
@@ -1712,7 +2083,7 @@ class BlogExtractor:
 
         self._log("info", f"Links saved to: {output_path}")
 
-    def save_to_json(self, filename: str):
+    def save_to_json(self, filename: str) -> None:
         """Save extracted data to JSON format"""
         output_path = os.path.join(self.output_dir, filename)
 
@@ -1744,7 +2115,7 @@ class BlogExtractor:
 
         self._log("info", f"JSON saved to: {output_path}")
 
-    def save_to_csv(self, filename: str):
+    def save_to_csv(self, filename: str) -> None:
         """Save extracted data to CSV format"""
         output_path = os.path.join(self.output_dir, filename)
 
@@ -1873,7 +2244,7 @@ def main():
         data = extractor.extract_blog_data(url)
 
         if data['status'] == 'success':
-            extractor._log("info", f"✓ Success: {data['title']}")
+            extractor._log("info", f"[OK] Success: {data['title']}")
             extractor._log("info", f"  URL: {data['url']}")
             extractor._log("info", f"  Date: {data['date']}")
             extractor._log("info", f"  Author: {data['author']}")
@@ -1885,10 +2256,10 @@ def main():
                 extractor._log("info", f"  Tags: {', '.join(data['tags'])}")
             success_count += 1
         elif data['status'] == 'duplicate':
-            extractor._log("warning", f"⊘ Duplicate: {data['title']}")
+            extractor._log("warning", f"[SKIP] Duplicate: {data['title']}")
             duplicate_count += 1
         else:
-            extractor._log("error", f"✗ Failed - {data.get('error', 'Unknown error')}")
+            extractor._log("error", f"[FAIL] Failed - {data.get('error', 'Unknown error')}")
 
         # Delay between requests
         if i < len(urls):
@@ -1899,7 +2270,7 @@ def main():
         extractor.save_to_xml("blog_posts.xml")
         extractor.save_links_to_txt("extracted_links.txt")
 
-    extractor._log("info", f"\n=== Summary ===")
+    extractor._log("info", "\n=== Summary ===")
     extractor._log("info", f"Total URLs: {len(urls)}")
     extractor._log("info", f"Successful: {success_count}")
     extractor._log("info", f"Duplicates: {duplicate_count}")

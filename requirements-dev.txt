@@ -1,0 +1,11 @@
+# Linting
+ruff==0.14.1
+
+# Typing
+mypy==1.18.2
+types-requests==2.32.4.20250913
+
+# Testing
+pytest==8.4.2
+pytest-asyncio==1.2.0
+
