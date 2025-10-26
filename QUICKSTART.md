@@ -67,16 +67,19 @@ After extraction, find your results in `output/`:
 
 ## Troubleshooting
 
-**Issue: "Playwright not installed"**
+### Issue: "Playwright not installed"
+
 ```bash
 python -m playwright install chromium
 ```
 
-**Issue: Images not downloading**
+### Issue: Images not downloading
+
 - Make sure `--download-images` is enabled (it's default)
 - Check you have write permissions to `output/images/`
 
-**Issue: Slow extraction**
+### Issue: Slow extraction
+
 - Use `--concurrent 5` for parallel processing
 - Reduce `--delay` (default is 2 seconds between requests)
 
