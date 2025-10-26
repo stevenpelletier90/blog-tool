@@ -4,25 +4,37 @@ Blog Extractor CLI - Enhanced with argparse
 Extract blog posts from URLs and convert to multiple formats.
 """
 
-import argparse
-import logging
+# Setup Windows environment before any other imports
+import sys
+if sys.platform.startswith('win'):
+    # Import and call setup before importing blog_extractor
+    import asyncio
+    import warnings
+    # WindowsProactorEventLoopPolicy deprecated in Python 3.14, removed in 3.16
+    if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    warnings.filterwarnings("ignore", category=ResourceWarning)
 
-# Configure logging
+# Standard library imports
+import argparse
+import asyncio
+import logging
+import time
+
+# Third-party imports
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+from rich.table import Table
+
+# Local imports
+from blog_extractor import OUTPUT_DIR, REQUEST_DELAY, URLS_FILE, BlogExtractor
+
+# Configure logging (after imports)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-import asyncio
-import sys
-import time
-
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn, TaskID
-from rich.panel import Panel
-from rich.table import Table
-
-from blog_extractor import OUTPUT_DIR, REQUEST_DELAY, URLS_FILE, BlogExtractor
 
 # Initialize rich console
 console = Console()

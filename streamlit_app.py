@@ -4,24 +4,37 @@ Streamlit Web Interface for Blog Extractor Tool
 Provides a user-friendly web interface for extracting blog posts and converting to WordPress XML.
 """
 
-import logging
+# Setup Windows environment before any other imports
+import sys
+if sys.platform.startswith('win'):
+    # Import and call setup before importing blog_extractor
+    import asyncio
+    import warnings
+    # WindowsProactorEventLoopPolicy deprecated in Python 3.14, removed in 3.16
+    if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    warnings.filterwarnings("ignore", category=ResourceWarning)
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Standard library imports
 import asyncio
+import logging
 import time
 from datetime import datetime
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
+# Third-party imports
 import streamlit as st
 
-# Import our blog extractor
+# Local imports
 from blog_extractor import BlogExtractor
+
+# Configure logging (after imports)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Page configuration
 st.set_page_config(
@@ -108,8 +121,8 @@ def validate_urls(urls: List[str]) -> List[str]:
 def analyze_links(extraction_results: List[Dict]) -> Dict[str, Any]:
     """Analyze all extracted links and categorize them with anchor text"""
     source_domains = set()
-    internal_links = {}  # {url: {'count': N, 'texts': [anchor texts], 'sources': [blog post URLs]}}
-    external_links = {}
+    internal_links: Dict[str, Dict[str, Any]] = {}  # {url: {'count': N, 'texts': [anchor texts], 'sources': [blog post URLs]}}
+    external_links: Dict[str, Dict[str, Any]] = {}
 
     # Collect source domains
     for result in extraction_results:

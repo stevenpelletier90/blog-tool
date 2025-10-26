@@ -4,41 +4,8 @@ Blog Content Extractor - Simplified with Playwright Only
 Extracts blog posts and converts to WordPress XML using only the best tool.
 """
 
-# Fix for Windows asyncio subprocess handling
-import asyncio
-import sys
-import warnings
-
-if sys.platform.startswith('win'):
-    # Windows requires ProactorEventLoop for subprocess operations
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-    # Suppress harmless Playwright cleanup warnings on Windows
-    # Suppress ALL Playwright subprocess cleanup warnings on Windows
-    import warnings
-    warnings.filterwarnings("ignore", category=ResourceWarning)
-
-# Check if Playwright is available (both sync and async)
-try:
-    from playwright.sync_api import sync_playwright
-    HAS_PLAYWRIGHT = True
-except ImportError:
-    HAS_PLAYWRIGHT = False
-    sync_playwright = None  # type: ignore
-
-try:
-    from playwright.async_api import async_playwright
-    HAS_ASYNC_PLAYWRIGHT = True
-except ImportError:
-    HAS_ASYNC_PLAYWRIGHT = False
-    async_playwright = None  # type: ignore
-
-# Configuration
-URLS_FILE = "urls.txt"
-OUTPUT_DIR = "output"
-REQUEST_DELAY = 2  # seconds between requests
-MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB - prevent disk fill attacks
-
 # Standard library imports
+import asyncio
 import csv
 import hashlib
 import html
@@ -48,11 +15,56 @@ import logging
 import os
 import random
 import re
+import sys
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union, cast
 from urllib.parse import urljoin, urlparse
+
+if TYPE_CHECKING:
+    from playwright.async_api import Browser, BrowserContext, Playwright
+
+# Third-party imports
+import aiofiles
+import aiohttp
+import filetype
+import requests
+import validators
+from dateutil import parser as dateutil_parser
+
+try:
+    from bs4 import BeautifulSoup, Tag
+    from bs4.element import NavigableString, PageElement
+except ImportError:
+    print("ERROR: BeautifulSoup4 is required. Install with: pip install beautifulsoup4")
+    raise
+
+# Check if Playwright is available (both sync and async)
+async_playwright: Optional[Any] = None
+sync_playwright: Optional[Any] = None
+
+try:
+    from playwright.async_api import async_playwright as _async_pw
+    async_playwright = _async_pw
+    HAS_ASYNC_PLAYWRIGHT = True
+except ImportError:
+    HAS_ASYNC_PLAYWRIGHT = False
+
+try:
+    from playwright.sync_api import sync_playwright as _sync_pw
+    sync_playwright = _sync_pw
+    HAS_PLAYWRIGHT = True
+except ImportError:
+    HAS_PLAYWRIGHT = False
+    print("WARNING: Playwright not available. Some features may not work.")
+
+# Configuration constants
+URLS_FILE = "urls.txt"
+OUTPUT_DIR = "output"
+REQUEST_DELAY = 2  # seconds between requests
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB - prevent disk fill attacks
 
 # Configure logging
 logging.basicConfig(
@@ -62,32 +74,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Third-party imports
-import requests
-from dateutil import parser as dateutil_parser
-import filetype
-import validators
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
-from rich.console import Console
-import aiohttp
-import aiofiles
 
-try:
-    from bs4 import BeautifulSoup, Tag
-    from bs4.element import NavigableString
-except ImportError:
-    print("ERROR: BeautifulSoup4 is required. Install with: pip install beautifulsoup4")
-    raise
+def setup_windows_environment() -> None:
+    """
+    Configure Windows-specific environment settings for asyncio and Playwright.
 
-# Playwright import
-try:
-    from playwright.sync_api import sync_playwright
-    HAS_PLAYWRIGHT = True
-except ImportError:
-    HAS_PLAYWRIGHT = False
-    sync_playwright = None  # Define for type checking
-    print("WARNING: Playwright not available. Some features may not work.")
-    # Don't exit for Streamlit Cloud compatibility
+    This function MUST be called before importing blog_extractor in Windows environments
+    to prevent subprocess handling errors and resource warnings.
+
+    Per CLAUDE.md: This setup was moved from module-level to avoid side effects when
+    blog_extractor.py is imported as a library.
+    """
+    if sys.platform.startswith('win'):
+        # Windows requires ProactorEventLoop for subprocess operations
+        # Note: WindowsProactorEventLoopPolicy deprecated in Python 3.14, removed in 3.16
+        if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        # Suppress ALL Playwright subprocess cleanup warnings on Windows
+        warnings.filterwarnings("ignore", category=ResourceWarning)
 
 
 class BlogExtractor:
@@ -117,9 +121,9 @@ class BlogExtractor:
         self.resolved_image_cache: Dict[str, str] = {}  # Cache for resolved image URLs
         self.downloaded_images: Dict[str, str] = {}  # Map original URL -> local file path
         # Shared Playwright browser for async concurrent mode (reduces overhead)
-        self._playwright = None
-        self._browser = None
-        self._context = None
+        self._playwright: Optional['Playwright'] = None
+        self._browser: Optional['Browser'] = None
+        self._context: Optional['BrowserContext'] = None
 
         # Create output directory if it doesn't exist
         Path(self.output_dir).mkdir(exist_ok=True)
@@ -300,7 +304,7 @@ class BlogExtractor:
                             page.wait_for_timeout(1500)
 
                             # Get page content
-                            html_content = page.content()
+                            html_content = cast(str, page.content())
                             return html_content
                         finally:
                             # Always cleanup browser resources, even on error
@@ -408,7 +412,7 @@ class BlogExtractor:
                         await page.wait_for_timeout(1500)
 
                         # Get page content
-                        html_content = await page.content()
+                        html_content = cast(str, await page.content())
                         return html_content
                     finally:
                         # Clean up browser resources
@@ -920,7 +924,7 @@ class BlogExtractor:
         gutenberg_blocks = []
 
         # Group consecutive inline/text elements into paragraphs
-        current_paragraph_parts = []
+        current_paragraph_parts: List[PageElement] = []
 
         # Process each top-level element
         for element in soup.children:
@@ -1230,7 +1234,7 @@ class BlogExtractor:
         for link in content_element.find_all('a', href=True):
             if isinstance(link, Tag):
                 # Check if link is inside excluded sections (tags, categories, author, nav)
-                parent_classes = []
+                parent_classes: List[str] = []
                 for parent in link.parents:
                     if isinstance(parent, Tag):
                         class_attr = parent.get('class')
@@ -1461,19 +1465,21 @@ class BlogExtractor:
         tasks = [self._extract_with_semaphore(url, semaphore) for url in urls]
 
         # Run all tasks concurrently
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        raw_results: List[Union[Dict[str, Any], BaseException]] = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Handle any exceptions
-        processed_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                self._log("error", f"Exception processing {urls[i]}: {result}")
+        processed_results: List[Dict[str, Any]] = []
+        for i, raw_result in enumerate(raw_results):
+            if isinstance(raw_result, Exception):
+                self._log("error", f"Exception processing {urls[i]}: {raw_result}")
                 processed_results.append({
                     'status': 'failed',
                     'url': urls[i],
-                    'error': str(result)
+                    'error': str(raw_result)
                 })
             else:
+                # Type narrowing: raw_result is Dict[str, Any] here
+                result = cast(Dict[str, Any], raw_result)
                 processed_results.append(result)
 
 
@@ -1488,7 +1494,7 @@ class BlogExtractor:
         Uses validators library to ensure URLs are properly formed before processing.
         Invalid URLs are logged and skipped to avoid wasted processing.
         """
-        urls = []
+        urls: List[str] = []
         invalid_urls = []
 
         if not os.path.exists(self.urls_file):
@@ -2088,7 +2094,7 @@ class BlogExtractor:
         output_path = os.path.join(self.output_dir, filename)
 
         # Prepare data for JSON export
-        json_data = {
+        json_data: Dict[str, Any] = {
             'export_date': datetime.now().isoformat(),
             'total_posts': len([p for p in self.extracted_data if p['status'] == 'success']),
             'posts': []
@@ -2157,7 +2163,7 @@ class BlogExtractor:
 
     def get_json_content(self) -> str:
         """Generate and return JSON content as string"""
-        json_data = {
+        json_data: Dict[str, Any] = {
             'export_date': datetime.now().isoformat(),
             'total_posts': len([p for p in self.extracted_data if p['status'] == 'success']),
             'posts': []
