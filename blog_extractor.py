@@ -191,6 +191,73 @@ class BlogExtractor:
         """Generate blake2s hash of content for duplicate detection (FIPS-compliant)"""
         return hashlib.blake2s(content.encode('utf-8')).hexdigest()
 
+    def _quick_platform_check(self, url: str) -> Optional[str]:
+        """Quick platform detection using basic requests (no Playwright) - FAST!
+
+        Returns platform name or None if detection fails.
+        This is used to determine if Playwright is needed before wasting time on heavy rendering.
+        """
+        try:
+            # Quick HEAD request first to check accessibility
+            head_response = requests.head(url, timeout=5, allow_redirects=True)
+
+            # If HEAD fails, try GET but with minimal timeout
+            if head_response.status_code >= 400:
+                response = requests.get(url, timeout=10)
+            else:
+                response = requests.get(url, timeout=10)
+
+            response.raise_for_status()
+            html = response.text
+
+            # Quick platform detection from HTML markers
+            html_lower = html.lower()
+
+            # JavaScript-heavy platforms (NEED Playwright)
+            if 'wix.com' in html_lower or 'data-hook=' in html or '_wix' in html_lower:
+                return 'wix'
+            if 'webflow.com' in html_lower or 'data-wf-domain' in html or 'data-wf-page' in html:
+                return 'webflow'
+            if 'blog__article__content__text' in html or 'dealer-content' in html_lower:
+                # DealerOn/DealerInspire - Angular/JavaScript heavy
+                return 'dealeron'
+
+            # Static platforms (DON'T need Playwright)
+            if 'wp-content' in html_lower or 'wordpress' in html_lower or 'wp-includes' in html_lower:
+                return 'wordpress'
+            if 'blogger.com' in html_lower or 'blogspot.com' in html_lower:
+                return 'blogger'
+            if 'medium.com' in html_lower:
+                return 'medium'
+            if 'squarespace' in html_lower:
+                return 'squarespace'
+
+            # Generic/unknown - assume static (most sites are)
+            return 'generic'
+
+        except Exception as e:
+            self._log("debug", f"  Quick platform check failed: {e}")
+            return None
+
+    def _needs_javascript_rendering(self, platform: Optional[str]) -> bool:
+        """Determine if a platform needs JavaScript rendering (Playwright)
+
+        Returns:
+            True if Playwright needed (JS-heavy site)
+            False if requests library is sufficient (static site)
+        """
+        if platform is None:
+            # Unknown platform - be safe and use Playwright
+            return True
+
+        # Platforms that REQUIRE Playwright (JavaScript-heavy)
+        js_heavy_platforms = {'wix', 'webflow', 'dealeron', 'dealerinspire'}
+
+        # Platforms that DON'T need Playwright (static HTML)
+        static_platforms = {'wordpress', 'blogger', 'medium', 'squarespace', 'generic'}
+
+        return platform.lower() in js_heavy_platforms
+
     def detect_platform(self, soup: BeautifulSoup) -> str:
         """Detect the blog platform from HTML structure"""
         # Check meta generator tag
@@ -245,8 +312,46 @@ class BlogExtractor:
         return 'generic'
 
     def fetch_content(self, url: str, max_retries: int = 3) -> Optional[str]:
-        """Fetch URL content using Playwright with fallback to requests and retry logic"""
-        # Try Playwright first if available
+        """Fetch URL content with SMART platform detection - skips Playwright for static sites!
+
+        Performance optimization: Quickly detects platform type first, then:
+        - Static sites (WordPress, Blogger, etc.) → requests library (5-10x faster!)
+        - JavaScript-heavy sites (Wix, Webflow, DealerOn) → Playwright
+        """
+        # STEP 1: Quick platform detection (5-10 seconds) to determine method
+        self._log("info", "  Detecting platform type...")
+        platform = self._quick_platform_check(url)
+        needs_js = self._needs_javascript_rendering(platform)
+
+        if platform:
+            if needs_js:
+                self._log("info", f"  Platform: {platform} (JavaScript-heavy → using Playwright)")
+            else:
+                self._log("info", f"  Platform: {platform} (static HTML → using requests for speed)")
+
+        # STEP 2: If static site, skip Playwright entirely and use requests
+        if not needs_js:
+            self._log("info", "  Fetching with requests library (fast path)...")
+            for attempt in range(max_retries):
+                try:
+                    response = requests.get(
+                        url,
+                        headers={'User-Agent': random.choice(self.user_agents)},
+                        timeout=30
+                    )
+                    response.raise_for_status()
+                    return response.text
+                except Exception as e:
+                    self._log("warning", f"  Requests attempt {attempt + 1} failed: {e}")
+                    if attempt < max_retries - 1:
+                        delay = 2 ** attempt
+                        self._log("info", f"  Retrying in {delay} seconds...")
+                        time.sleep(delay)
+
+            # If requests failed, fall through to try Playwright anyway
+            self._log("warning", "  Requests failed, falling back to Playwright...")
+
+        # STEP 3: Try Playwright for JavaScript-heavy sites (or if requests failed)
         if HAS_PLAYWRIGHT and sync_playwright is not None:
             for attempt in range(max_retries):
                 try:
@@ -349,12 +454,46 @@ class BlogExtractor:
         return None
 
     async def fetch_content_async(self, url: str, max_retries: int = 3) -> Optional[str]:
-        """Async version: Fetch URL content using Playwright with retry logic"""
+        """Async version: Fetch URL content with SMART platform detection"""
         if not HAS_ASYNC_PLAYWRIGHT or async_playwright is None:
             # Fall back to synchronous version if async not available
             return self.fetch_content(url, max_retries)
 
-        # Try async Playwright (each request gets own browser to prevent hanging)
+        # STEP 1: Quick platform detection to determine method
+        self._log("info", "  Detecting platform type...")
+        platform = self._quick_platform_check(url)  # Still uses sync requests (fast)
+        needs_js = self._needs_javascript_rendering(platform)
+
+        if platform:
+            if needs_js:
+                self._log("info", f"  Platform: {platform} (JavaScript-heavy → using Playwright)")
+            else:
+                self._log("info", f"  Platform: {platform} (static HTML → using requests for speed)")
+
+        # STEP 2: If static site, skip Playwright and use requests
+        if not needs_js:
+            self._log("info", "  Fetching with requests library (fast path)...")
+            for attempt in range(max_retries):
+                try:
+                    # Use sync requests in async context (it's fast enough)
+                    response = requests.get(
+                        url,
+                        headers={'User-Agent': random.choice(self.user_agents)},
+                        timeout=30
+                    )
+                    response.raise_for_status()
+                    return response.text
+                except Exception as e:
+                    self._log("warning", f"  Requests attempt {attempt + 1} failed: {e}")
+                    if attempt < max_retries - 1:
+                        delay = 2 ** attempt
+                        self._log("info", f"  Retrying in {delay} seconds...")
+                        await asyncio.sleep(delay)
+
+            # If requests failed, fall through to Playwright
+            self._log("warning", "  Requests failed, falling back to Playwright...")
+
+        # STEP 3: Try async Playwright for JavaScript-heavy sites (or if requests failed)
         for attempt in range(max_retries):
             page = None
             try:
