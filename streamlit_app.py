@@ -380,16 +380,22 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
     log_container = st.empty()
     current_url_text = st.empty()
 
+    # Activity log - shows everything happening in real-time
+    activity_log_expander = st.expander("📋 Detailed Activity Log (live updates)", expanded=True)
+    activity_log_container = activity_log_expander.container()
+    activity_messages = []
+
     # Create callback for logging
     def logging_callback(level: str, message: str):
-        """Clean callback - tracks active URLs and shows essential user-friendly messages"""
+        """Tracks all activity and shows real-time progress"""
 
         # Track when URLs start processing
         if 'Processing:' in message:
             url = message.replace('Processing:', '').strip()
             counters['active'].add(url)
             current_url_text.info(f"🔄 Currently processing: {url}")
-            return  # Don't show "Processing" in log
+            activity_messages.append(f"▶️ Started: {url[:60]}...")
+            # Don't return - also show in activity log
 
         # Track completion events and remove from active set
         if 'Success:' in message or '[OK]' in message or 'Duplicate content' in message or '[SKIP]' in message or '[FAIL]' in message:
@@ -397,43 +403,57 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
             # Try to remove URL from active (may not match exactly, so use try/except)
             if counters['active']:
                 counters['active'].pop() if counters['active'] else None
-            # Don't return - let completion messages show below
 
         # Update current activity for real-time status
         if 'Fetching with Playwright' in message:
             counters['current_activity'] = 'Launching browser...'
+            activity_messages.append("🌐 Launching Playwright browser...")
         elif 'Scrolling to load' in message:
             counters['current_activity'] = 'Loading images...'
+            activity_messages.append("📜 Scrolling to load all images...")
         elif 'Detected platform' in message:
             counters['current_activity'] = 'Extracting content...'
+            platform = message.split(':')[-1].strip() if ':' in message else 'Unknown'
+            activity_messages.append(f"🔍 Detected platform: {platform}")
         elif 'Fast mode' in message:
             counters['current_activity'] = 'Trying fast mode...'
+            activity_messages.append("⚡ Trying fast mode (requests library)...")
 
-        # Hide most technical details but keep some useful ones visible
+        # Only hide truly noisy error messages
         hide_messages = [
-            "attempt", "Retrying", "Platform:", "URL:", "Date:", "Author:",
-            "Content:", "Links:", "Categories:", "Tags:", "All",
-            "Selector wait failed", "Timeout", "Page.wait_for", "Call log",
-            "waiting for locator", "locator(", "to be visible"
+            "Selector wait failed", "Page.wait_for", "Call log",
+            "waiting for locator", "locator("
         ]
 
         if any(phrase in message for phrase in hide_messages):
-            return  # Hide technical details from users
+            return  # Hide only truly noisy technical errors
 
-        # Show only essential user-friendly messages
+        # Show activity log messages
+        if 'Retrying' in message:
+            activity_messages.append(f"🔄 {message}")
+        elif 'blocked by site' in message or 'falling back' in message:
+            activity_messages.append(f"⚠️ {message}")
+
+        # Update activity log (keep last 50 messages)
+        if len(activity_messages) > 50:
+            activity_messages.pop(0)
+
+        with activity_log_container:
+            for msg in activity_messages[-10:]:  # Show last 10 messages
+                st.text(msg)
+
+        # Show completion messages in main log
         with log_container.container():
             if 'Success:' in message or '[OK]' in message:
-                # Show successful extraction
                 title = message.replace('✓ Success: ', '').replace('[OK]', '').strip()
                 st.success(f"✅ {title}")
+                activity_messages.append(f"✅ Completed: {title[:60]}...")
             elif '[FAIL]' in message:
-                # Show user-friendly failure message
                 st.error(f"❌ {message.replace('[FAIL]', '').strip()}")
+                activity_messages.append(f"❌ Failed: {message[:60]}...")
             elif 'Duplicate content' in message or '[SKIP]' in message:
                 st.info(f"⏭️ {message}")
-            elif 'Parsed date:' in message:
-                st.info(f"ℹ️ {message}")
-            # Hide all other technical messages
+                activity_messages.append(f"⏭️ Skipped: Duplicate content")
 
     # Initialize extractor with callback
     extractor = BlogExtractor(
