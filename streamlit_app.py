@@ -248,16 +248,16 @@ def get_concurrent_settings() -> tuple[int, bool, bool, bool, bool]:
         skip_duplicates = st.checkbox("Skip duplicates", value=True)
         relative_links = st.checkbox("Use relative links", value=False)
 
-        # Fast mode toggle - skip Playwright for WordPress/static sites
+        # Fast mode toggle - try requests first, fallback to Playwright if blocked
         fast_mode = st.checkbox(
-            "Fast mode (10x speed)",
+            "Fast mode (try requests first)",
             value=False,
-            help="Skip Playwright - ONLY for WordPress/static sites. Will fail on Wix/JavaScript-heavy sites."
+            help="Tries fast requests library first, falls back to Playwright if blocked. Best for WordPress/static sites without bot protection."
         )
 
-    # Show warning if fast mode enabled
+    # Show info if fast mode enabled
     if fast_mode:
-        st.warning("⚠️ Fast mode enabled - only use for WordPress/Blogger/static sites! JavaScript-heavy sites (Wix, Webflow, DealerOn) will fail.")
+        st.info("ℹ️ Fast mode: Will try requests library first (10x faster), but automatically fall back to Playwright if site blocks requests. Works for most WordPress sites.")
 
     return max_concurrent, relative_links, include_images, skip_duplicates, fast_mode
 

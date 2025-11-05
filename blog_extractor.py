@@ -461,9 +461,10 @@ class BlogExtractor:
             # Fall back to synchronous version if async not available
             return self.fetch_content(url, max_retries)
 
-        # FAST MODE: If skip_playwright is True, use requests directly (10x faster!)
+        # FAST MODE: If skip_playwright is True, try requests first (10x faster!)
+        # But fall back to Playwright if site blocks requests (403, etc.)
         if self.skip_playwright:
-            self._log("info", "  Fast mode: Using requests library (skipping Playwright)...")
+            self._log("info", "  Fast mode: Trying requests library first...")
             for attempt in range(max_retries):
                 try:
                     # Use sync requests in async context (it's fast enough)
@@ -473,6 +474,7 @@ class BlogExtractor:
                         timeout=30
                     )
                     response.raise_for_status()
+                    self._log("info", "  Fast mode succeeded with requests!")
                     return response.text
                 except Exception as e:
                     self._log("warning", f"  Requests attempt {attempt + 1} failed: {e}")
@@ -481,9 +483,9 @@ class BlogExtractor:
                         self._log("info", f"  Retrying in {delay} seconds...")
                         await asyncio.sleep(delay)
 
-            # All requests failed
-            self._log("error", f"  All fast mode attempts failed for {url}")
-            return None
+            # Requests failed - fall back to Playwright (site probably has bot protection)
+            self._log("warning", "  Fast mode blocked by site - falling back to Playwright...")
+            # Continue to Playwright below instead of returning None
 
         # NORMAL MODE: Smart platform detection (if not in fast mode)
         # STEP 1: Quick platform detection to determine method
