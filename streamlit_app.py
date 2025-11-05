@@ -19,7 +19,6 @@ if sys.platform.startswith('win'):
 # Standard library imports
 import asyncio
 import logging
-import threading
 import time
 from datetime import datetime
 from typing import Any, Dict, List
@@ -470,57 +469,29 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
     update_progress()
 
     if max_concurrent > 1:
-        # Run async processing in separate thread for real-time UI updates
-        results_container = {'results': None, 'complete': False}
+        # Show activity log in expander (not updated during processing to avoid hang)
+        with activity_log_container.container():
+            st.info("🔄 Processing URLs concurrently... Activity log will update when complete.")
 
-        def run_async_processing():
-            """Run async processing in separate thread"""
-            results = asyncio.run(extractor.process_urls_concurrently(urls, max_concurrent))
-            results_container['results'] = results
-            results_container['complete'] = True
+        # Run async processing (blocks until complete)
+        results = asyncio.run(extractor.process_urls_concurrently(urls, max_concurrent))
 
-        # Start async processing thread
-        thread = threading.Thread(target=run_async_processing, daemon=True)
-        thread.start()
+        # Process results
+        for result in results:
+            if result and result.get('status') == 'success':
+                st.session_state.extraction_results.append(result)
 
-        # Poll progress in real-time while thread runs
-        while not results_container['complete']:
-            # Update progress based on callback-incremented counter
-            update_progress()
+            elif result and result.get('status') == 'duplicate':
+                st.session_state.duplicate_log.append({
+                    'url': result.get('url', ''),
+                    'title': result.get('title', 'Unknown')
+                })
 
-            # Update activity log with latest messages
-            if activity_messages:
-                activity_text = "\n".join(activity_messages[-10:])  # Show last 10 messages
-                activity_log_container.text_area(
-                    "📋 Activity Log (last 10 events)",
-                    value=activity_text,
-                    height=200,
-                    disabled=True
-                )
-
-            time.sleep(0.5)  # Update UI twice per second
-
-        # Wait for thread to complete
-        thread.join(timeout=1.0)
-
-        # Process final results
-        results = results_container['results']
-        if results:
-            for result in results:
-                if result and result.get('status') == 'success':
-                    st.session_state.extraction_results.append(result)
-
-                elif result and result.get('status') == 'duplicate':
-                    st.session_state.duplicate_log.append({
-                        'url': result.get('url', ''),
-                        'title': result.get('title', 'Unknown')
-                    })
-
-                else:
-                    st.session_state.error_log.append({
-                        'url': result.get('url', ''),
-                        'error': result.get('error', 'Unknown error')
-                    })
+            else:
+                st.session_state.error_log.append({
+                    'url': result.get('url', ''),
+                    'error': result.get('error', 'Unknown error')
+                })
 
         elapsed = time.time() - counters['start_time']
         # Calculate actual results from session state
@@ -528,6 +499,16 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
         duplicates = len(st.session_state.duplicate_log)
         failed = len(st.session_state.error_log)
         success_rate = (successful / counters['total'] * 100) if counters['total'] > 0 else 0
+
+        # Show activity log after completion
+        if activity_messages:
+            with activity_log_container.container():
+                st.text_area(
+                    "📋 Activity Log (completed)",
+                    value="\n".join(activity_messages),
+                    height=200,
+                    disabled=True
+                )
 
         status_text.success(f"✅ **Complete!** {successful} extracted, {duplicates} duplicates, {failed} failed ({elapsed:.1f}s)")
         progress_bar.progress(1.0)
