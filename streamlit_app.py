@@ -227,7 +227,7 @@ def get_url_inputs():
     return valid_urls
 
 
-def get_concurrent_settings() -> tuple[int, bool, bool, bool]:
+def get_concurrent_settings() -> tuple[int, bool, bool, bool, bool]:
     """Get concurrent processing settings - simple and compact"""
     st.markdown("### Step 2: Options")
 
@@ -248,7 +248,18 @@ def get_concurrent_settings() -> tuple[int, bool, bool, bool]:
         skip_duplicates = st.checkbox("Skip duplicates", value=True)
         relative_links = st.checkbox("Use relative links", value=False)
 
-    return max_concurrent, relative_links, include_images, skip_duplicates
+        # Fast mode toggle - skip Playwright for WordPress/static sites
+        fast_mode = st.checkbox(
+            "Fast mode (10x speed)",
+            value=False,
+            help="Skip Playwright - ONLY for WordPress/static sites. Will fail on Wix/JavaScript-heavy sites."
+        )
+
+    # Show warning if fast mode enabled
+    if fast_mode:
+        st.warning("⚠️ Fast mode enabled - only use for WordPress/Blogger/static sites! JavaScript-heavy sites (Wix, Webflow, DealerOn) will fail.")
+
+    return max_concurrent, relative_links, include_images, skip_duplicates, fast_mode
 
 def display_find_replace():
     """General-purpose find/replace interface for XML modification"""
@@ -303,7 +314,7 @@ def apply_replacements(xml_content: str) -> str:
 
     return modified_content
 
-def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool = False, include_images: bool = True, skip_duplicates: bool = True):
+def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool = False, include_images: bool = True, skip_duplicates: bool = True, fast_mode: bool = False):
     """Process URLs with progress tracking (supports async concurrent mode)"""
     if not urls:
         st.error("❌ No valid URLs to process")
@@ -398,7 +409,8 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
         relative_links=relative_links,
         include_images=include_images,
         skip_duplicates=skip_duplicates,
-        download_images=False  # Always False - images imported via XML only
+        download_images=False,  # Always False - images imported via XML only
+        skip_playwright=fast_mode  # Fast mode: skip Playwright for 10x speed boost
     )
 
     # Reset session state
@@ -681,7 +693,7 @@ def main():
     urls = get_url_inputs()
 
     # Get concurrent settings
-    max_concurrent, relative_links, include_images, skip_duplicates = get_concurrent_settings()
+    max_concurrent, relative_links, include_images, skip_duplicates, fast_mode = get_concurrent_settings()
 
     # Step 3: Extract button (after configuration)
     st.markdown("### 🚀 Step 3: Start Extraction")
@@ -707,7 +719,7 @@ def main():
         st.markdown("### 🔄 Extracting Blog Posts...")
 
         with st.spinner("Processing your blog posts..."):
-            process_urls(urls, max_concurrent, relative_links, include_images, skip_duplicates)
+            process_urls(urls, max_concurrent, relative_links, include_images, skip_duplicates, fast_mode)
     elif st.session_state.is_processing:
         st.warning("⏳ Extraction in progress...")
 

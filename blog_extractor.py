@@ -103,7 +103,8 @@ class BlogExtractor:
         relative_links: bool = False,
         include_images: bool = True,
         skip_duplicates: bool = True,
-        download_images: bool = True
+        download_images: bool = True,
+        skip_playwright: bool = False
     ):
         self.urls_file = urls_file
         self.output_dir = output_dir
@@ -114,6 +115,7 @@ class BlogExtractor:
         self.include_images = include_images  # Include images in exported content
         self.skip_duplicates = skip_duplicates  # Skip duplicate content (default True)
         self.download_images = download_images  # Download images locally instead of using external URLs
+        self.skip_playwright = skip_playwright  # Fast mode - skip Playwright for WordPress/static sites
         self.seen_hashes: Set[str] = set()  # For duplicate detection
         self.resolved_image_cache: Dict[str, str] = {}  # Cache for resolved image URLs
         self.downloaded_images: Dict[str, str] = {}  # Map original URL -> local file path
@@ -454,11 +456,36 @@ class BlogExtractor:
         return None
 
     async def fetch_content_async(self, url: str, max_retries: int = 3) -> Optional[str]:
-        """Async version: Fetch URL content with SMART platform detection"""
+        """Async version: Fetch URL content with optional Playwright skip (fast mode)"""
         if not HAS_ASYNC_PLAYWRIGHT or async_playwright is None:
             # Fall back to synchronous version if async not available
             return self.fetch_content(url, max_retries)
 
+        # FAST MODE: If skip_playwright is True, use requests directly (10x faster!)
+        if self.skip_playwright:
+            self._log("info", "  Fast mode: Using requests library (skipping Playwright)...")
+            for attempt in range(max_retries):
+                try:
+                    # Use sync requests in async context (it's fast enough)
+                    response = requests.get(
+                        url,
+                        headers={'User-Agent': random.choice(self.user_agents)},
+                        timeout=30
+                    )
+                    response.raise_for_status()
+                    return response.text
+                except Exception as e:
+                    self._log("warning", f"  Requests attempt {attempt + 1} failed: {e}")
+                    if attempt < max_retries - 1:
+                        delay = 2 ** attempt
+                        self._log("info", f"  Retrying in {delay} seconds...")
+                        await asyncio.sleep(delay)
+
+            # All requests failed
+            self._log("error", f"  All fast mode attempts failed for {url}")
+            return None
+
+        # NORMAL MODE: Smart platform detection (if not in fast mode)
         # STEP 1: Quick platform detection to determine method
         self._log("info", "  Detecting platform type...")
         platform = self._quick_platform_check(url)  # Still uses sync requests (fast)
