@@ -426,7 +426,8 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
             # Update progress bar
             progress = counters['completed'] / counters['total']
             progress_bar.progress(progress)
-        elif 'failed' in message.lower() or '[FAIL]' in message:
+        elif '[FAIL]' in message:
+            # Only count final failures (marked with [FAIL] tag), not intermediate Playwright retries
             counters['failed'] += 1
             counters['completed'] += 1
             if counters['processing'] > 0:
