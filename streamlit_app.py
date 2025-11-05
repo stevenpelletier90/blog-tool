@@ -366,18 +366,37 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Simple progress counter - no confusing live metrics
+    # Simple progress counter with time tracking
     counters = {
         'total': len(urls),
-        'completed': 0
+        'completed': 0,
+        'start_time': time.time()
     }
 
     def update_progress():
-        """Update progress bar and status message"""
+        """Update progress bar and status message with estimated time remaining"""
+        if counters['completed'] == 0:
+            status_text.info(f"⏳ **Starting...** Processing {counters['total']} URLs")
+            return
+
         progress = counters['completed'] / counters['total']
         progress_bar.progress(progress)
         percent = int(progress * 100)
-        status_text.info(f"⏳ **Processing:** {counters['completed']} of {counters['total']} URLs ({percent}%)")
+
+        # Calculate estimated time remaining
+        elapsed = time.time() - counters['start_time']
+        avg_time_per_url = elapsed / counters['completed']
+        remaining_urls = counters['total'] - counters['completed']
+        estimated_remaining = avg_time_per_url * remaining_urls
+
+        # Format time remaining
+        if estimated_remaining < 60:
+            time_str = f"~{int(estimated_remaining)}s remaining"
+        else:
+            mins = int(estimated_remaining / 60)
+            time_str = f"~{mins}m remaining"
+
+        status_text.info(f"⏳ **Processing:** {counters['completed']} of {counters['total']} ({percent}%) • {time_str}")
 
 
     log_container = st.empty()
@@ -440,11 +459,10 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
     st.session_state.error_log = []
     st.session_state.duplicate_log = []
 
-    start_time = time.time()
-
     # Show initial status
+    update_progress()
+
     if max_concurrent > 1:
-        status_text.info(f"⚡ **Starting...** Processing {len(urls)} URLs with {max_concurrent} concurrent requests")
 
         # Run async processing
         results = asyncio.run(extractor.process_urls_concurrently(urls, max_concurrent))
@@ -469,7 +487,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
                     'error': result.get('error', 'Unknown error')
                 })
 
-        elapsed = time.time() - start_time
+        elapsed = time.time() - counters['start_time']
         # Calculate actual results from session state
         successful = len(st.session_state.extraction_results)
         duplicates = len(st.session_state.duplicate_log)
@@ -517,7 +535,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
             time.sleep(0.5)
 
         # Processing complete
-        elapsed_time = time.time() - start_time
+        elapsed_time = time.time() - counters['start_time']
         successful = len(st.session_state.extraction_results)
         duplicates = len(st.session_state.duplicate_log)
         failed = len(st.session_state.error_log)
