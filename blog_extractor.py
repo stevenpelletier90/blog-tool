@@ -265,8 +265,9 @@ class BlogExtractor:
                             page.goto(url, wait_until='load', timeout=120000)
 
                             # Wait for blog content to render (Angular SPA)
+                            # Increased timeout to 30s for cloud environments with limited resources
                             try:
-                                page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=10000)
+                                page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=30000)
                             except Exception as e:
                                 # Continue anyway, content might use different selector
                                 self._log("debug", f"  Selector wait failed (expected): {e}")
@@ -373,8 +374,9 @@ class BlogExtractor:
                         await page.goto(url, wait_until='load', timeout=120000)
 
                         # Wait for blog content to render (Angular SPA)
+                        # Increased timeout to 30s for cloud environments with limited resources
                         try:
-                            await page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=10000)
+                            await page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=30000)
                         except Exception as e:
                             # Continue anyway, content might use different selector
                             self._log("debug", f"  Selector wait failed (expected): {e}")
