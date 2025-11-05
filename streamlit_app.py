@@ -325,25 +325,44 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Simple progress counter with time tracking
+    # Progress tracking with active URL monitoring
     counters = {
         'total': len(urls),
         'completed': 0,
-        'start_time': time.time()
+        'start_time': time.time(),
+        'active': set(),  # Track URLs currently being processed
+        'current_activity': 'Starting...'  # Current operation status
     }
 
     def update_progress():
-        """Update progress bar and status message with estimated time remaining"""
+        """Update progress bar and status message - ALWAYS shows elapsed time and activity"""
+        elapsed = time.time() - counters['start_time']
+
+        # Format elapsed time
+        if elapsed < 60:
+            elapsed_str = f"{int(elapsed)}s"
+        else:
+            mins = int(elapsed / 60)
+            secs = int(elapsed % 60)
+            elapsed_str = f"{mins}m {secs}s"
+
+        # Show active count
+        active_count = len(counters['active'])
+
         if counters['completed'] == 0:
-            status_text.info(f"⏳ **Starting...** Processing {counters['total']} URLs")
+            # No completions yet - show active processing
+            if active_count > 0:
+                status_text.info(f"⏳ **Processing {active_count} URLs...** • {elapsed_str} elapsed • {counters['current_activity']}")
+            else:
+                status_text.info(f"⏳ **Starting...** Processing {counters['total']} URLs • {elapsed_str} elapsed")
             return
 
+        # Have completions - show progress with ETA
         progress = counters['completed'] / counters['total']
         progress_bar.progress(progress)
         percent = int(progress * 100)
 
         # Calculate estimated time remaining
-        elapsed = time.time() - counters['start_time']
         avg_time_per_url = elapsed / counters['completed']
         remaining_urls = counters['total'] - counters['completed']
         estimated_remaining = avg_time_per_url * remaining_urls
@@ -355,7 +374,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
             mins = int(estimated_remaining / 60)
             time_str = f"~{mins}m remaining"
 
-        status_text.info(f"⏳ **Processing:** {counters['completed']} of {counters['total']} ({percent}%) • {time_str}")
+        status_text.info(f"⏳ **Processing:** {counters['completed']} of {counters['total']} ({percent}%) • {active_count} active • {time_str}")
 
 
     log_container = st.empty()
@@ -363,23 +382,36 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
 
     # Create callback for logging
     def logging_callback(level: str, message: str):
-        """Clean callback - hides technical details, shows only essential user-friendly messages"""
+        """Clean callback - tracks active URLs and shows essential user-friendly messages"""
 
-        # Update progress on completion events
-        if 'Success:' in message or '[OK]' in message or 'Duplicate content' in message or '[SKIP]' in message or '[FAIL]' in message:
-            counters['completed'] += 1
-            update_progress()
-
-        # Show current URL being processed
+        # Track when URLs start processing
         if 'Processing:' in message:
             url = message.replace('Processing:', '').strip()
+            counters['active'].add(url)
             current_url_text.info(f"🔄 Currently processing: {url}")
             return  # Don't show "Processing" in log
 
-        # Hide technical errors and verbose details
+        # Track completion events and remove from active set
+        if 'Success:' in message or '[OK]' in message or 'Duplicate content' in message or '[SKIP]' in message or '[FAIL]' in message:
+            counters['completed'] += 1
+            # Try to remove URL from active (may not match exactly, so use try/except)
+            if counters['active']:
+                counters['active'].pop() if counters['active'] else None
+            # Don't return - let completion messages show below
+
+        # Update current activity for real-time status
+        if 'Fetching with Playwright' in message:
+            counters['current_activity'] = 'Launching browser...'
+        elif 'Scrolling to load' in message:
+            counters['current_activity'] = 'Loading images...'
+        elif 'Detected platform' in message:
+            counters['current_activity'] = 'Extracting content...'
+        elif 'Fast mode' in message:
+            counters['current_activity'] = 'Trying fast mode...'
+
+        # Hide most technical details but keep some useful ones visible
         hide_messages = [
-            "Fetching with", "attempt", "Retrying", "Scrolling to load",
-            "Detected platform", "Platform:", "URL:", "Date:", "Author:",
+            "attempt", "Retrying", "Platform:", "URL:", "Date:", "Author:",
             "Content:", "Links:", "Categories:", "Tags:", "All",
             "Selector wait failed", "Timeout", "Page.wait_for", "Call log",
             "waiting for locator", "locator(", "to be visible"
