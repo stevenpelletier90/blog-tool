@@ -362,117 +362,68 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
         st.error("❌ No valid URLs to process")
         return
 
-    # Initialize progress tracking with live counters
+    # Initialize clean progress tracking
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # Add real-time metrics display
-    metrics_cols = st.columns(5)
-    metric_total = metrics_cols[0].empty()
-    metric_success = metrics_cols[1].empty()
-    metric_processing = metrics_cols[2].empty()
-    metric_duplicates = metrics_cols[3].empty()
-    metric_failed = metrics_cols[4].empty()
-
-    # Live counters for real-time updates
+    # Simple progress counter - no confusing live metrics
     counters = {
         'total': len(urls),
-        'completed': 0,
-        'success': 0,
-        'duplicates': 0,
-        'failed': 0,
-        'processing': 0
+        'completed': 0
     }
 
-    def update_metrics():
-        """Update the live metrics display"""
-        metric_total.metric("Total URLs", counters['total'])
-        metric_success.metric("✅ Success", counters['success'], delta=None)
-        metric_processing.metric("🔄 Processing", counters['processing'], delta=None)
-        metric_duplicates.metric("⏭️ Duplicates", counters['duplicates'], delta=None)
-        metric_failed.metric("❌ Failed", counters['failed'], delta=None)
+    def update_progress():
+        """Update progress bar and status message"""
+        progress = counters['completed'] / counters['total']
+        progress_bar.progress(progress)
+        percent = int(progress * 100)
+        status_text.info(f"⏳ **Processing:** {counters['completed']} of {counters['total']} URLs ({percent}%)")
 
-    # Initialize metrics display
-    update_metrics()
 
     log_container = st.empty()
     current_url_text = st.empty()
 
     # Create callback for logging
     def logging_callback(level: str, message: str):
-        """Callback to display logs in Streamlit - filters verbose messages and updates counters"""
-        # Update counters based on message content
+        """Clean callback - hides technical details, shows only essential user-friendly messages"""
+
+        # Update progress on completion events
+        if 'Success:' in message or '[OK]' in message or 'Duplicate content' in message or '[SKIP]' in message or '[FAIL]' in message:
+            counters['completed'] += 1
+            update_progress()
+
+        # Show current URL being processed
         if 'Processing:' in message:
-            counters['processing'] += 1
-            update_metrics()
-            # Show current URL being processed
             url = message.replace('Processing:', '').strip()
             current_url_text.info(f"🔄 Currently processing: {url}")
-        elif 'Success:' in message or '[OK]' in message:
-            counters['success'] += 1
-            counters['completed'] += 1
-            if counters['processing'] > 0:
-                counters['processing'] -= 1
-            update_metrics()
-            # Update progress bar
-            progress = counters['completed'] / counters['total']
-            progress_bar.progress(progress)
-        elif 'Duplicate content detected' in message or '[SKIP]' in message:
-            counters['duplicates'] += 1
-            counters['completed'] += 1
-            if counters['processing'] > 0:
-                counters['processing'] -= 1
-            update_metrics()
-            # Update progress bar
-            progress = counters['completed'] / counters['total']
-            progress_bar.progress(progress)
-        elif '[FAIL]' in message:
-            # Only count final failures (marked with [FAIL] tag), not intermediate Playwright retries
-            counters['failed'] += 1
-            counters['completed'] += 1
-            if counters['processing'] > 0:
-                counters['processing'] -= 1
-            update_metrics()
-            # Update progress bar
-            progress = counters['completed'] / counters['total']
-            progress_bar.progress(progress)
+            return  # Don't show "Processing" in log
 
-        # Filter out verbose details - only show essential progress info
-        skip_phrases = [
-            "Fetching with",
-            "attempt",
-            "Retrying in",
-            "Detected platform",
-            "Platform:",
-            "URL:",
-            "Date:",
-            "Author:",
-            "Content:",
-            "Links:",
-            "Categories:",
-            "Tags:",
-            "All",
-            "Scrolling to load",
+        # Hide technical errors and verbose details
+        hide_messages = [
+            "Fetching with", "attempt", "Retrying", "Scrolling to load",
+            "Detected platform", "Platform:", "URL:", "Date:", "Author:",
+            "Content:", "Links:", "Categories:", "Tags:", "All",
+            "Selector wait failed", "Timeout", "Page.wait_for", "Call log",
+            "waiting for locator", "locator(", "to be visible"
         ]
 
-        # Skip verbose messages unless it's an error
-        if level != 'error' and any(phrase in message for phrase in skip_phrases):
-            return
+        if any(phrase in message for phrase in hide_messages):
+            return  # Hide technical details from users
 
+        # Show only essential user-friendly messages
         with log_container.container():
-            if level == 'error':
-                st.error(f"🔴 {message}")
-            elif level == 'warning':
-                st.warning(f"⚠️ {message}")
-            elif 'Success:' in message or '[OK]' in message:
-                # Simplify success messages to just show title
+            if 'Success:' in message or '[OK]' in message:
+                # Show successful extraction
                 title = message.replace('✓ Success: ', '').replace('[OK]', '').strip()
                 st.success(f"✅ {title}")
-            elif 'Downloading image:' in message or 'Saved:' in message:
-                # Show image download progress
-                st.info(f"📥 {message}")
-            else:
+            elif '[FAIL]' in message:
+                # Show user-friendly failure message
+                st.error(f"❌ {message.replace('[FAIL]', '').strip()}")
+            elif 'Duplicate content' in message or '[SKIP]' in message:
+                st.info(f"⏭️ {message}")
+            elif 'Parsed date:' in message:
                 st.info(f"ℹ️ {message}")
+            # Hide all other technical messages
 
     # Initialize extractor with callback
     extractor = BlogExtractor(
@@ -491,10 +442,9 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
 
     start_time = time.time()
 
-    # Use concurrent processing if enabled
+    # Show initial status
     if max_concurrent > 1:
-        status_text.info(f"⚡ **Concurrent Mode Active** - Processing {len(urls)} URLs with {max_concurrent} simultaneous requests\n\n"
-                        f"Watch the metrics above update in real-time as URLs are processed!")
+        status_text.info(f"⚡ **Starting...** Processing {len(urls)} URLs with {max_concurrent} concurrent requests")
 
         # Run async processing
         results = asyncio.run(extractor.process_urls_concurrently(urls, max_concurrent))
@@ -520,9 +470,13 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
                 })
 
         elapsed = time.time() - start_time
-        status_text.success(f"✅ **Extraction Complete!**\n\n"
-                           f"⏱️ Total time: {elapsed:.1f} seconds\n"
-                           f"📊 Success rate: {(counters['success'] / counters['total'] * 100):.1f}%")
+        # Calculate actual results from session state
+        successful = len(st.session_state.extraction_results)
+        duplicates = len(st.session_state.duplicate_log)
+        failed = len(st.session_state.error_log)
+        success_rate = (successful / counters['total'] * 100) if counters['total'] > 0 else 0
+
+        status_text.success(f"✅ **Complete!** {successful} extracted, {duplicates} duplicates, {failed} failed ({elapsed:.1f}s)")
         progress_bar.progress(1.0)
         current_url_text.empty()  # Clear current URL display
 
@@ -564,8 +518,13 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
 
         # Processing complete
         elapsed_time = time.time() - start_time
+        successful = len(st.session_state.extraction_results)
+        duplicates = len(st.session_state.duplicate_log)
+        failed = len(st.session_state.error_log)
+
         progress_bar.progress(1.0)
-        status_text.text(f"✅ Processing complete! ({elapsed_time:.1f} seconds)")
+        status_text.success(f"✅ **Complete!** {successful} extracted, {duplicates} duplicates, {failed} failed ({elapsed_time:.1f}s)")
+        current_url_text.empty()  # Clear current URL display
 
     # Update session state
     st.session_state.is_processing = False
