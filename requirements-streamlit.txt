@@ -1,7 +1,0 @@
-# Dependencies for Streamlit web UI (streamlit_app.py)
-# Includes all core dependencies plus Streamlit and its dependencies
--r requirements-cli.txt
-
-# Streamlit and its constrained dependencies
-streamlit==1.50.0
-pillow==11.3.0  # Pinned: Streamlit 1.50.0 requires pillow<12

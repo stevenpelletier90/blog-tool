@@ -2025,9 +2025,35 @@ class BlogExtractor:
         attachment_id = abs(hash(image_src) % 1000000) + 1000000  # Offset to avoid collision with posts
 
         # Extract filename from URL for title
-        from urllib.parse import urlparse
+        from urllib.parse import urlparse, parse_qs
         parsed_url = urlparse(image_src)
-        filename = os.path.basename(parsed_url.path) or 'image'
+        base_filename = os.path.basename(parsed_url.path) or 'image'
+
+        # Make filename unique by including query parameters or hash
+        # This prevents WordPress from treating all "GetLibraryImage" URLs as the same file
+        if parsed_url.query:
+            # Parse query string to extract unique identifiers
+            query_params = parse_qs(parsed_url.query)
+            unique_id = None
+
+            # Look for common ID parameters
+            for param_name in ['fileNameOrId', 'id', 'file', 'image', 'imageId']:
+                if param_name in query_params:
+                    unique_id = query_params[param_name][0]
+                    break
+
+            if unique_id:
+                # Append unique ID to filename: GetLibraryImage_208132
+                name_part, ext_part = os.path.splitext(base_filename)
+                filename = f"{name_part}_{unique_id}{ext_part if ext_part else ''}"
+            else:
+                # No recognizable ID param, use hash of full URL for uniqueness
+                url_hash = hashlib.md5(image_src.encode()).hexdigest()[:8]
+                name_part, ext_part = os.path.splitext(base_filename)
+                filename = f"{name_part}_{url_hash}{ext_part if ext_part else ''}"
+        else:
+            filename = base_filename
+
         title = os.path.splitext(filename)[0].replace('-', ' ').replace('_', ' ').title()
 
         f.write('<item>\n')

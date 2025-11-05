@@ -1,4 +1,26 @@
-# Default: Includes both CLI and Streamlit web UI
-# For CLI only: pip install -r requirements-cli.txt
-# For Streamlit: pip install -r requirements-streamlit.txt
--r requirements-streamlit.txt
+# Full installation: Streamlit Web UI + CLI with all features
+# For CLI-only (without Streamlit): pip install -r requirements-cli.txt
+
+# Core web scraping
+beautifulsoup4>=4.14.0
+requests>=2.32.0
+lxml>=6.0.0
+playwright>=1.55.0
+
+# Image processing & validation
+pillow==11.3.0  # Pinned for Streamlit 1.50.0 compatibility
+filetype>=1.2.0
+
+# Async I/O for performance
+aiohttp>=3.13.0
+aiofiles>=25.1.0
+
+# Date parsing & URL validation
+python-dateutil>=2.9.0
+validators>=0.35.0
+
+# Progress bars & CLI
+tqdm>=4.67.0
+
+# Streamlit Web UI
+streamlit>=1.50.0
