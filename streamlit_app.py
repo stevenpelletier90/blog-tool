@@ -19,6 +19,7 @@ if sys.platform.startswith('win'):
 # Standard library imports
 import asyncio
 import logging
+import threading
 import time
 from datetime import datetime
 from typing import Any, Dict, List
@@ -422,29 +423,46 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
     update_progress()
 
     if max_concurrent > 1:
+        # Run async processing in separate thread for real-time UI updates
+        results_container = {'results': None, 'complete': False}
 
-        # Run async processing
-        results = asyncio.run(extractor.process_urls_concurrently(urls, max_concurrent))
+        def run_async_processing():
+            """Run async processing in separate thread"""
+            results = asyncio.run(extractor.process_urls_concurrently(urls, max_concurrent))
+            results_container['results'] = results
+            results_container['complete'] = True
 
-        # Process results
-        for i, result in enumerate(results):
-            progress = (i + 1) / len(results)
-            progress_bar.progress(progress)
+        # Start async processing thread
+        thread = threading.Thread(target=run_async_processing, daemon=True)
+        thread.start()
 
-            if result and result.get('status') == 'success':
-                st.session_state.extraction_results.append(result)
+        # Poll progress in real-time while thread runs
+        while not results_container['complete']:
+            # Update progress based on callback-incremented counter
+            update_progress()
+            time.sleep(0.5)  # Update UI twice per second
 
-            elif result and result.get('status') == 'duplicate':
-                st.session_state.duplicate_log.append({
-                    'url': result.get('url', ''),
-                    'title': result.get('title', 'Unknown')
-                })
+        # Wait for thread to complete
+        thread.join(timeout=1.0)
 
-            else:
-                st.session_state.error_log.append({
-                    'url': result.get('url', ''),
-                    'error': result.get('error', 'Unknown error')
-                })
+        # Process final results
+        results = results_container['results']
+        if results:
+            for result in results:
+                if result and result.get('status') == 'success':
+                    st.session_state.extraction_results.append(result)
+
+                elif result and result.get('status') == 'duplicate':
+                    st.session_state.duplicate_log.append({
+                        'url': result.get('url', ''),
+                        'title': result.get('title', 'Unknown')
+                    })
+
+                else:
+                    st.session_state.error_log.append({
+                        'url': result.get('url', ''),
+                        'error': result.get('error', 'Unknown error')
+                    })
 
         elapsed = time.time() - counters['start_time']
         # Calculate actual results from session state
