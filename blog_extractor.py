@@ -366,47 +366,42 @@ class BlogExtractor:
                             )
                             page = context.new_page()
 
-                            # Navigate and wait for ALL network activity to finish
+                            # Navigate and wait for page load (optimized timeout)
                             self._log("info", f"  Fetching with Playwright (attempt {attempt + 1}/{max_retries})...")
-                            # CRITICAL: wait_until='load' ensures ALL images finish loading
-                            page.goto(url, wait_until='load', timeout=120000)
+                            # wait_until='load' ensures page is fully loaded
+                            page.goto(url, wait_until='load', timeout=45000)  # 45s (was 120s) - faster!
 
                             # Wait for blog content to render (Angular SPA)
-                            # Increased timeout to 30s for cloud environments with limited resources
                             try:
-                                page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=30000)
+                                page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=15000)  # 15s (was 30s)
                             except Exception as e:
                                 # Continue anyway, content might use different selector
                                 self._log("debug", f"  Selector wait failed (expected): {e}")
-                            page.wait_for_timeout(1000)  # Extra time for dynamic content
+                            page.wait_for_timeout(500)  # Brief wait for dynamic content
 
-                            # FOOLPROOF SCROLLING: Scroll slowly + wait for network idle after EACH step
-                            # This ensures EVERY image lazy-loads at full quality (not placeholders)
-                            self._log("info", "  Scrolling to load all images (20-30 seconds)...")
+                            # OPTIMIZED SCROLLING: Faster but still loads all images
+                            self._log("info", "  Scrolling to load all images (15-20 seconds)...")
 
                             # Scroll to 25% of page
                             page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.25)")
-                            page.wait_for_load_state('networkidle', timeout=20000)
-                            page.wait_for_timeout(500)
+                            page.wait_for_load_state('networkidle', timeout=8000)  # 8s (was 20s)
 
                             # Scroll to 50% of page
                             page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
-                            page.wait_for_load_state('networkidle', timeout=20000)
-                            page.wait_for_timeout(500)
+                            page.wait_for_load_state('networkidle', timeout=8000)
 
                             # Scroll to 75% of page
                             page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.75)")
-                            page.wait_for_load_state('networkidle', timeout=20000)
-                            page.wait_for_timeout(500)
+                            page.wait_for_load_state('networkidle', timeout=8000)
 
                             # Scroll to bottom
                             page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                            page.wait_for_load_state('networkidle', timeout=20000)
-                            page.wait_for_timeout(1000)  # Extra wait at bottom for final images
+                            page.wait_for_load_state('networkidle', timeout=8000)
+                            page.wait_for_timeout(500)  # Brief wait for final images
 
                             # Scroll back to top
                             page.evaluate("window.scrollTo(0, 0)")
-                            page.wait_for_timeout(1500)
+                            page.wait_for_timeout(500)
 
                             # Get page content
                             html_content = cast(str, page.content())
@@ -536,47 +531,42 @@ class BlogExtractor:
                     try:
                         page = await context.new_page()
 
-                        # Navigate and wait for ALL network activity to finish
+                        # Navigate and wait for page load (optimized timeout)
                         self._log("info", f"  Fetching with Playwright async (attempt {attempt + 1}/{max_retries})...")
-                        # CRITICAL: wait_until='load' ensures ALL images finish loading
-                        await page.goto(url, wait_until='load', timeout=120000)
+                        # wait_until='load' ensures page is fully loaded
+                        await page.goto(url, wait_until='load', timeout=45000)  # 45s (was 120s) - faster!
 
                         # Wait for blog content to render (Angular SPA)
-                        # Increased timeout to 30s for cloud environments with limited resources
                         try:
-                            await page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=30000)
+                            await page.wait_for_selector('div.blog__article__content__text, article, .blog-post', timeout=15000)  # 15s (was 30s)
                         except Exception as e:
                             # Continue anyway, content might use different selector
                             self._log("debug", f"  Selector wait failed (expected): {e}")
-                        await page.wait_for_timeout(1000)  # Extra time for dynamic content
+                        await page.wait_for_timeout(500)  # Brief wait for dynamic content
 
-                        # FOOLPROOF SCROLLING: Scroll slowly + wait for network idle after EACH step
-                        # This ensures EVERY image lazy-loads at full quality (not placeholders)
-                        self._log("info", "  Scrolling to load all images (20-30 seconds)...")
+                        # OPTIMIZED SCROLLING: Faster but still loads all images
+                        self._log("info", "  Scrolling to load all images (15-20 seconds)...")
 
                         # Scroll to 25% of page
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.25)")
-                        await page.wait_for_load_state('networkidle', timeout=20000)
-                        await page.wait_for_timeout(500)
+                        await page.wait_for_load_state('networkidle', timeout=8000)  # 8s (was 20s)
 
                         # Scroll to 50% of page
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.5)")
-                        await page.wait_for_load_state('networkidle', timeout=20000)
-                        await page.wait_for_timeout(500)
+                        await page.wait_for_load_state('networkidle', timeout=8000)
 
                         # Scroll to 75% of page
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight * 0.75)")
-                        await page.wait_for_load_state('networkidle', timeout=20000)
-                        await page.wait_for_timeout(500)
+                        await page.wait_for_load_state('networkidle', timeout=8000)
 
                         # Scroll to bottom
                         await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                        await page.wait_for_load_state('networkidle', timeout=20000)
-                        await page.wait_for_timeout(1000)  # Extra wait at bottom for final images
+                        await page.wait_for_load_state('networkidle', timeout=8000)
+                        await page.wait_for_timeout(500)  # Brief wait for final images
 
                         # Scroll back to top
                         await page.evaluate("window.scrollTo(0, 0)")
-                        await page.wait_for_timeout(1500)
+                        await page.wait_for_timeout(500)
 
                         # Get page content
                         html_content = cast(str, await page.content())
