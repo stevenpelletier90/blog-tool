@@ -434,13 +434,9 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
         elif 'blocked by site' in message or 'falling back' in message:
             activity_messages.append(f"⚠️ {message}")
 
-        # Update activity log (keep last 50 messages)
+        # Limit activity log size
         if len(activity_messages) > 50:
             activity_messages.pop(0)
-
-        with activity_log_container:
-            for msg in activity_messages[-10:]:  # Show last 10 messages
-                st.text(msg)
 
         # Show completion messages in main log
         with log_container.container():
@@ -492,6 +488,12 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
         while not results_container['complete']:
             # Update progress based on callback-incremented counter
             update_progress()
+
+            # Update activity log with latest messages
+            with activity_log_container:
+                for msg in activity_messages[-10:]:  # Show last 10 messages
+                    st.text(msg)
+
             time.sleep(0.5)  # Update UI twice per second
 
         # Wait for thread to complete
