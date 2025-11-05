@@ -407,7 +407,7 @@ self.resolved_urls: Dict[str, str] = {}  # Cache to avoid duplicate requests
 
 ### Async Architecture
 
-**Event Loop:** Windows requires `WindowsProactorEventLoopPolicy` (line ~8-12)
+**Event Loop:** Windows defaults to `ProactorEventLoop` (Python 3.8+), no manual policy setting needed. Code uses modern `asyncio.run()` pattern.
 
 **Semaphore Control:**
 

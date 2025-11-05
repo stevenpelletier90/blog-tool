@@ -7,12 +7,9 @@ Provides a user-friendly web interface for extracting blog posts and converting 
 # Setup Windows environment before any other imports
 import sys
 if sys.platform.startswith('win'):
-    # Import and call setup before importing blog_extractor
-    import asyncio
     import warnings
-    # WindowsProactorEventLoopPolicy deprecated in Python 3.14, removed in 3.16
-    if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    # Suppress Playwright subprocess cleanup warnings on Windows
+    # Note: ProactorEventLoop is the default on Windows since Python 3.8
     warnings.filterwarnings("ignore", category=ResourceWarning)
 
 # Standard library imports
@@ -28,6 +25,34 @@ import streamlit as st
 
 # Local imports
 from blog_extractor import BlogExtractor
+
+# Install Playwright browsers on Streamlit Cloud (runs once on first startup)
+# This is required because Streamlit Cloud doesn't have browsers pre-installed
+import os
+import subprocess
+from pathlib import Path
+
+def install_playwright_browsers():
+    """Install Playwright browsers if not already installed (for Streamlit Cloud deployment)."""
+    # Check if running on Streamlit Cloud (Linux environment)
+    if sys.platform.startswith('linux'):
+        # Check if chromium browser is already installed
+        playwright_cache = Path.home() / '.cache' / 'ms-playwright'
+        chromium_path = playwright_cache / 'chromium-1187' / 'chrome-linux' / 'chrome'
+
+        if not chromium_path.exists():
+            try:
+                print("Installing Playwright browsers for Streamlit Cloud...")
+                subprocess.run(['playwright', 'install', 'chromium'], check=True, capture_output=True)
+                print("Playwright browsers installed successfully!")
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: Failed to install Playwright browsers: {e}")
+                print("App will fall back to requests library for extraction.")
+            except FileNotFoundError:
+                print("Warning: playwright command not found. Falling back to requests library.")
+
+# Run browser installation check on app startup
+install_playwright_browsers()
 
 # Configure logging (after imports)
 logging.basicConfig(

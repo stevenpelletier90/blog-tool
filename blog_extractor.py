@@ -86,11 +86,8 @@ def setup_windows_environment() -> None:
     blog_extractor.py is imported as a library.
     """
     if sys.platform.startswith('win'):
-        # Windows requires ProactorEventLoop for subprocess operations
-        # Note: WindowsProactorEventLoopPolicy deprecated in Python 3.14, removed in 3.16
-        if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
-            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-        # Suppress ALL Playwright subprocess cleanup warnings on Windows
+        # Windows uses ProactorEventLoop by default (since Python 3.8) for subprocess support
+        # Suppress Playwright subprocess cleanup warnings on Windows
         warnings.filterwarnings("ignore", category=ResourceWarning)
 
 

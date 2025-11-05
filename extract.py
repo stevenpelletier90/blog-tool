@@ -7,12 +7,9 @@ Extract blog posts from URLs and convert to multiple formats.
 # Setup Windows environment before any other imports
 import sys
 if sys.platform.startswith('win'):
-    # Import and call setup before importing blog_extractor
-    import asyncio
     import warnings
-    # WindowsProactorEventLoopPolicy deprecated in Python 3.14, removed in 3.16
-    if hasattr(asyncio, 'WindowsProactorEventLoopPolicy'):
-        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    # Suppress Playwright subprocess cleanup warnings on Windows
+    # Note: ProactorEventLoop is the default on Windows since Python 3.8
     warnings.filterwarnings("ignore", category=ResourceWarning)
 
 # Standard library imports

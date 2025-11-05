@@ -44,18 +44,22 @@ soup.decode(formatter="minimal")
 **Impact:** Images won't import to WordPress media library
 **Solution:** Use resolved HTTPS URLs in XML; download locally as backup only
 
-### 3. Windows Asyncio Event Loop Policy
+### 3. Windows Asyncio Event Loop (Python 3.14+ Modern Approach)
 
-**Location:** Top of blog_extractor.py (lines 8-12)
+**Location:** Top of extract.py, blog_extractor.py, streamlit_app.py
 
-```python
-if sys.platform.startswith('win'):
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-```
+**Modern Approach (Python 3.14+):**
+- No manual event loop policy setting required
+- Python 3.8+ defaults to ProactorEventLoop on Windows (correct for Playwright subprocess support)
+- Code uses `asyncio.run()` which automatically uses the default event loop
+- Only ResourceWarning filter needed to suppress Playwright subprocess cleanup warnings
 
-**Why:** Prevents subprocess errors on Windows with Playwright
-**Impact:** Tool crashes on Windows without this
-**Required:** Must execute before any async operations; in future refactors prefer setting this in CLI entry points to avoid surprising host apps
+**Why:**
+- WindowsProactorEventLoopPolicy deprecated in Python 3.14, removed in 3.16
+- Default event loop on Windows is already correct for Playwright
+- Modern asyncio patterns (asyncio.run()) handle event loop creation automatically
+
+**Impact:** Clean, modern code without deprecated API calls
 
 ### 4. MD5 Content Hashing
 
@@ -149,7 +153,29 @@ def _log(self, level: str, message: str):
 
 ## Deployment Considerations
 
-- **Streamlit Cloud:** Works without Playwright (falls back to requests)
+### Streamlit Cloud
+
+**Full Playwright support enabled!** The app automatically installs browsers on first startup.
+
+**Required files:**
+- `packages.txt` - System dependencies for browser execution (already included)
+- `streamlit_app.py` - Auto-installs browsers on first run (already configured)
+
+**How it works:**
+1. App detects Linux environment (Streamlit Cloud)
+2. Checks if browsers are installed
+3. Runs `playwright install chromium` if needed
+4. Falls back to requests library if installation fails
+
+**packages.txt contents:**
+```
+libnss3, libnspr4, libatk1.0-0, libatk-bridge2.0-0, libcups2, libdrm2,
+libxkbcommon0, libxcomposite1, libxdamage1, libxfixes3, libxrandr2,
+libgbm1, libpango-1.0-0, libcairo2, libasound2, libatspi2.0-0, libwayland-client0
+```
+
+### Other Environments
+
 - **Local:** Install Playwright for best results (`python -m playwright install --with-deps`)
 - **CI/Docker:** Cache virtual environment + run `python -m playwright install --with-deps` during build
 - **Virtual environment:** Required - default `.venv/` or managed via `uv`
@@ -159,6 +185,7 @@ def _log(self, level: str, message: str):
 - **blog_extractor.py** - Core `BlogExtractor` class (~2000 lines)
 - **extract.py** - CLI wrapper with argparse (~250 lines)
 - **streamlit_app.py** - Web UI with progress tracking (~680 lines)
+- **packages.txt** - System dependencies for Streamlit Cloud Playwright support
 - **requirements.txt** - Full dependencies (CLI + Streamlit)
 - **requirements-cli.txt** - CLI only (no Streamlit, allows newer Pillow)
 - **requirements-streamlit.txt** - Streamlit + CLI dependencies

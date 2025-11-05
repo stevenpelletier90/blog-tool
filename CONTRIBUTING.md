@@ -367,12 +367,9 @@ except:  # Don't do this
 
 **Symptom:** `RuntimeError: Event loop is closed`
 
-**Solution:** Already fixed at top of blog_extractor.py:
+**Solution:** No longer an issue in Python 3.8+ on Windows. ProactorEventLoop is the default, and the code uses modern `asyncio.run()` pattern which handles event loop creation automatically.
 
-```python
-if sys.platform.startswith('win'):
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
-```
+Note: The deprecated `WindowsProactorEventLoopPolicy` code was removed in Python 3.14+ to use modern asyncio patterns.
 
 ### Import Errors
 
