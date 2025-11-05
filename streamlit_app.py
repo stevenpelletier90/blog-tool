@@ -380,9 +380,8 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
     log_container = st.empty()
     current_url_text = st.empty()
 
-    # Activity log - shows everything happening in real-time
-    activity_log_expander = st.expander("📋 Detailed Activity Log (live updates)", expanded=True)
-    activity_log_container = activity_log_expander.container()
+    # Activity log - simple text area that updates in real-time
+    activity_log_container = st.empty()
     activity_messages = []
 
     # Create callback for logging
@@ -490,9 +489,14 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
             update_progress()
 
             # Update activity log with latest messages
-            with activity_log_container:
-                for msg in activity_messages[-10:]:  # Show last 10 messages
-                    st.text(msg)
+            if activity_messages:
+                activity_text = "\n".join(activity_messages[-10:])  # Show last 10 messages
+                activity_log_container.text_area(
+                    "📋 Activity Log (last 10 events)",
+                    value=activity_text,
+                    height=200,
+                    disabled=True
+                )
 
             time.sleep(0.5)  # Update UI twice per second
 
