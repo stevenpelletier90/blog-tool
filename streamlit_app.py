@@ -227,81 +227,28 @@ def get_url_inputs():
     return valid_urls
 
 
-def get_concurrent_settings() -> tuple[int, bool, bool, bool, bool]:
-    """Get concurrent processing settings - concurrent is default for best performance"""
-    st.markdown("### ⚙️ Step 2: Configuration Options")
-    st.caption("Configure how your blog posts will be extracted and processed")
+def get_concurrent_settings() -> tuple[int, bool, bool, bool]:
+    """Get concurrent processing settings - simple and compact"""
+    st.markdown("### Step 2: Options")
 
-    with st.expander("⚡ Performance Settings", expanded=False):
+    # Simple inline options - no expanders
+    col1, col2 = st.columns(2)
+
+    with col1:
         max_concurrent = st.slider(
-            "Concurrent requests:",
+            "Concurrent requests",
             min_value=1,
             max_value=10,
             value=5,
-            help="1 = Sequential (slower), 5 = Recommended (3-5x faster), 10 = Maximum (may overwhelm server)"
+            help="Process multiple URLs simultaneously (5 = recommended)"
         )
 
-        if max_concurrent == 1:
-            st.info("🐢 Sequential processing (one URL at a time)")
-        else:
-            st.info(f"💨 Processing {max_concurrent} URLs simultaneously (3-5x faster!)")
+    with col2:
+        include_images = st.checkbox("Include images", value=True)
+        skip_duplicates = st.checkbox("Skip duplicates", value=True)
+        relative_links = st.checkbox("Use relative links", value=False)
 
-    with st.expander("🔧 Content Options", expanded=True):
-        # Link handling option
-        relative_links = st.checkbox(
-            "Use relative links in XML output",
-            value=False,
-            help="Keep internal links relative for easier domain migration (useful when moving to a new domain)"
-        )
-
-        if relative_links:
-            st.info("🔗 Internal links will be relative (e.g., /page instead of https://example.com/page)")
-        else:
-            st.info("🔗 All links will be absolute URLs (preserves exact source URLs)")
-
-        st.markdown("---")
-
-        # Image extraction option
-        include_images = st.checkbox(
-            "Include images in exported content",
-            value=True,
-            help="Extracts images from blog posts and includes them in the WordPress XML."
-        )
-
-        if include_images:
-            st.info("🖼️ Images will be included in the export")
-        else:
-            st.info("🚫 Images will be excluded from exported content")
-
-        # Image download option (only show if images are included)
-        download_images = False
-        if include_images:
-            download_images = st.checkbox(
-                "Download images locally (RECOMMENDED)",
-                value=True,
-                help="Downloads images to output/images/ folder. This protects you if source images are removed and gives you full control over hosting."
-            )
-
-            if download_images:
-                st.success("💾 Images will be downloaded locally to output/images/ - you're protected if source images go offline!")
-            else:
-                st.warning("⚠️ Using external image URLs (not recommended) - images may break if source site removes them")
-
-        st.markdown("---")
-
-        # Duplicate handling option
-        skip_duplicates = st.checkbox(
-            "Skip duplicate content (recommended)",
-            value=True,
-            help="Automatically skip blog posts with identical content. Uncheck this if you need duplicates in the XML for find/replace operations."
-        )
-
-        if skip_duplicates:
-            st.info("✅ Duplicate posts will be detected and skipped")
-        else:
-            st.warning("⚠️ Duplicates will be included - useful for find/replace but may create duplicate posts in WordPress")
-
-    return max_concurrent, relative_links, include_images, skip_duplicates, download_images
+    return max_concurrent, relative_links, include_images, skip_duplicates
 
 def display_find_replace():
     """General-purpose find/replace interface for XML modification"""
@@ -356,7 +303,7 @@ def apply_replacements(xml_content: str) -> str:
 
     return modified_content
 
-def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool = False, include_images: bool = True, skip_duplicates: bool = True, download_images: bool = True):
+def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool = False, include_images: bool = True, skip_duplicates: bool = True):
     """Process URLs with progress tracking (supports async concurrent mode)"""
     if not urls:
         st.error("❌ No valid URLs to process")
@@ -451,7 +398,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
         relative_links=relative_links,
         include_images=include_images,
         skip_duplicates=skip_duplicates,
-        download_images=download_images
+        download_images=False  # Always False - images imported via XML only
     )
 
     # Reset session state
@@ -734,7 +681,7 @@ def main():
     urls = get_url_inputs()
 
     # Get concurrent settings
-    max_concurrent, relative_links, include_images, skip_duplicates, download_images = get_concurrent_settings()
+    max_concurrent, relative_links, include_images, skip_duplicates = get_concurrent_settings()
 
     # Step 3: Extract button (after configuration)
     st.markdown("### 🚀 Step 3: Start Extraction")
@@ -760,7 +707,7 @@ def main():
         st.markdown("### 🔄 Extracting Blog Posts...")
 
         with st.spinner("Processing your blog posts..."):
-            process_urls(urls, max_concurrent, relative_links, include_images, skip_duplicates, download_images)
+            process_urls(urls, max_concurrent, relative_links, include_images, skip_duplicates)
     elif st.session_state.is_processing:
         st.warning("⏳ Extraction in progress...")
 

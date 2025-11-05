@@ -101,16 +101,20 @@ https://s3.amazonaws.com/bucket/image.jpg?signature=...&expires=...
 
 **Location:** `_resolve_image_url()` and `_download_image()` around line 1477-1550
 
-### Local Image Downloads
+### Image Import Strategy
 
-**Default:** `download_images=True`
+**Default:** `download_images=False` (Streamlit UI always uses False)
 
-Downloads all images to `output/images/` directory as backup. XML contains HTTPS URLs (not file://) so WordPress can fetch during import.
+Images are imported via WordPress XML only - no local downloads by default.
 
-**Dual protection strategy:**
+**How it works:**
 
-- Local backup in `output/images/` for permanence
-- HTTPS S3 URLs in XML for WordPress import compatibility
+1. Tool resolves dynamic URLs (WebDAM → S3) to get permanent HTTPS URLs
+2. HTTPS URLs are included in XML `<img>` tags and `<wp:attachment_url>` entries
+3. WordPress automatically downloads images from HTTPS URLs during XML import
+4. Images appear in WordPress Media Library after import
+
+**Optional local backup:** CLI users can use `--download-images` flag to also save images to `output/images/` directory as backup. However, XML still uses HTTPS URLs (not file:// paths) for WordPress compatibility.
 
 ## Platform Detection Strategy
 

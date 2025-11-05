@@ -23,7 +23,7 @@ Technical deep dive into the blog extraction tool's architecture, design pattern
 - `BlogExtractor` class - Main orchestrator
 - Platform detection system
 - Content extraction with HTML-to-Gutenberg conversion
-- Image URL resolution and download
+- Image URL resolution and optional download
 - Duplicate detection (MD5 hashing)
 - WordPress WXR 1.2 XML generation
 - Async/sync dual-mode operation
@@ -35,7 +35,7 @@ Technical deep dive into the blog extraction tool's architecture, design pattern
 - `detect_platform(soup)` - Platform auto-detection (line ~400)
 - `extract_content(soup, platform)` - Content extraction (line ~500)
 - `_resolve_image_url(url)` - WebDAM/dynamic URL resolution (line ~1477)
-- `_download_image(url, img_dir)` - Local image download (line ~1485)
+- `_download_image(url, img_dir)` - Optional local image download (line ~1594, skipped if download_images=False)
 - `_convert_relative_urls_to_absolute(content, base_url)` - URL normalization (line ~1550)
 - `save_to_xml(filename)` - WordPress WXR generation (line ~1753)
 - `process_urls_concurrently(urls, max_concurrent)` - Async batch processing (line ~300)
@@ -90,7 +90,7 @@ blog-tool/
 │   ├── extracted_links.txt
 │   ├── blog_posts.json
 │   ├── blog_posts.csv
-│   └── images/           # Downloaded images
+│   └── images/           # Downloaded images (optional, CLI --download-images only)
 ├── CLAUDE.md             # AI-focused constraints
 ├── README.md             # User documentation
 ├── ARCHITECTURE.md       # This file
@@ -343,11 +343,11 @@ def _download_image(self, url: str, img_dir: Path) -> Optional[str]:
 
 **Why HTTPS URLs in XML:**
 
-WordPress server can't access `file://` URLs. The tool:
+WordPress server can't access `file://` URLs. The tool always puts HTTPS URLs in XML so WordPress can fetch images during import.
 
-- Downloads images locally (backup)
-- Puts HTTPS URLs in XML (WordPress can fetch)
-- Dual protection strategy
+- **Default (Streamlit):** No local downloads, images imported via XML only
+- **Optional (CLI --download-images):** Local backup saved to output/images/, XML still uses HTTPS URLs
+- **WordPress Import:** Fetches images from HTTPS URLs and adds to Media Library
 
 ## Image Handling System
 
@@ -385,7 +385,7 @@ def _is_dynamic_url(self, url: str) -> bool:
 self.resolved_urls: Dict[str, str] = {}  # Cache to avoid duplicate requests
 ```
 
-### Image Download Flow
+### Image Processing Flow
 
 ```bash
 1. Find <img> tag in content
@@ -396,12 +396,14 @@ self.resolved_urls: Dict[str, str] = {}  # Cache to avoid duplicate requests
    ↓
 4. Check cache → if resolved before, use cached URL
    ↓
-5. Download to output/images/ directory
+5. (Optional) Download to output/images/ directory if download_images=True
    ↓
-6. Update <img src="https://..."> with resolved HTTPS URL
+6. Update <img src="https://..."> with resolved HTTPS URL in XML
    ↓
-7. WordPress import fetches from HTTPS URL
+7. WordPress import fetches images from HTTPS URLs during import
 ```
+
+**Note:** Streamlit UI always uses `download_images=False`. CLI users can enable with `--download-images` flag.
 
 ## Concurrency Model
 

@@ -6,7 +6,7 @@ A production-ready tool that extracts blog posts from any platform (Wix, WordPre
 
 - **8+ Platform Support**: Wix, Webflow, WordPress, DealerOn, DealerInspire, Medium, Squarespace, Blogger
 - **Smart Content Extraction**: Automatically detects platform and extracts clean content
-- **Image Protection**: Downloads images locally and resolves WebDAM/dynamic URLs to permanent S3 URLs
+- **Image Protection**: Resolves WebDAM/dynamic URLs to permanent S3 URLs for WordPress import
 - **Duplicate Detection**: MD5 content hashing prevents duplicate posts
 - **Concurrent Processing**: Process multiple URLs simultaneously (3-5x faster)
 - **Multiple Interfaces**: CLI and web UI (Streamlit)
@@ -94,7 +94,7 @@ All output is saved to the `output/` directory:
 
 - **blog_posts.xml** - WordPress WXR 1.2 format (import to WordPress)
 - **extracted_links.txt** - All hyperlinks found by post
-- **images/** - Downloaded images (local backup)
+- **images/** - Downloaded images (optional, CLI only with --download-images flag)
 - **blog_posts.json** - JSON format (CLI only)
 - **blog_posts.csv** - CSV format (CLI only)
 
@@ -111,13 +111,13 @@ All output is saved to the `output/` directory:
 
 ## Key Features Explained
 
-### Image Protection
+### Image Handling
 
-The tool protects against images being removed from source sites:
+The tool automatically handles images for WordPress import:
 
 1. **Resolves Dynamic URLs**: Follows redirects from WebDAM/PHP endpoints to permanent S3 URLs
-2. **Local Downloads**: Saves all images to `output/images/` directory
-3. **WordPress Compatible**: XML contains HTTPS URLs for WordPress import
+2. **XML Import**: HTTPS URLs included in XML - WordPress downloads images during import
+3. **Optional Backup**: CLI users can use `--download-images` flag to save local copies
 
 ### Duplicate Detection
 
@@ -164,9 +164,14 @@ Reduce concurrent requests or add delay between requests:
 python extract.py --concurrent 3 --delay 5
 ```
 
-### Images Not Downloading
+### Images Not Appearing in WordPress
 
-Check your internet connection and ensure the source site allows image downloads. The tool will use the original URL if local download fails.
+Images are imported by WordPress from the HTTPS URLs in the XML file. If images don't appear:
+
+1. Ensure your WordPress server has internet access and can fetch from HTTPS URLs
+2. Check WordPress Media Library after import - images may take time to download
+3. Try the Tools → Import → WordPress → Run Importer again if some images failed
+4. Verify resolved image URLs are still accessible (check output XML file)
 
 ## Development
 
