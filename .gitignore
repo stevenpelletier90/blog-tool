@@ -59,6 +59,7 @@ urls.txt
 # Temporary files
 *.tmp
 *.temp
+nul
 
 # Claude settings (keep local only)
 .claude/
