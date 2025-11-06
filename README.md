@@ -16,13 +16,42 @@ A production-ready tool that extracts blog posts from any platform (Wix, WordPre
 
 ### Installation
 
+#### Automated Setup (Recommended for Beginners)
+
+**Windows:**
+
+```bash
+# Just double-click setup.bat
+# It installs everything automatically!
+```
+
+**Mac/Linux:**
+
+```bash
+# Run the setup script
+bash setup.sh
+```
+
+The setup script automatically:
+
+- ✅ Checks Python installation
+- ✅ Creates virtual environment
+- ✅ Installs all dependencies
+- ✅ Installs Playwright browsers
+- ✅ Creates necessary folders
+- ✅ Creates sample `urls.txt` file
+
+**That's it!** Everything is ready to use.
+
+#### Manual Installation (Advanced Users)
+
 ```bash
 # Create virtual environment
-python -m venv .venv
+python -m venv blog-extractor-env
 
 # Activate virtual environment
-.venv\Scripts\activate          # Windows
-source .venv/bin/activate       # Mac/Linux
+blog-extractor-env\Scripts\activate          # Windows
+source blog-extractor-env/bin/activate       # Mac/Linux
 
 # Install dependencies
 # For both CLI and web UI:
@@ -31,11 +60,8 @@ pip install -r requirements.txt
 # Or CLI only (no Streamlit, includes Pillow 12+):
 pip install -r requirements-cli.txt
 
-# Optional: Enhanced features (requires code changes to use)
-pip install -r requirements-extras.txt
-
 # Install Playwright browsers (recommended for best results)
-python -m playwright install --with-deps
+python -m playwright install chromium
 ```
 
 ### Usage

@@ -2,6 +2,16 @@
 
 ## Installation
 
+### Automated (Recommended)
+
+**Windows:** Double-click `setup.bat`
+
+**Mac/Linux:** Run `bash setup.sh`
+
+The script automatically installs everything (Python packages, Playwright browsers, creates folders).
+
+### Manual
+
 ```bash
 # Install dependencies
 pip install -r requirements.txt

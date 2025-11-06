@@ -157,6 +157,20 @@ def _log(self, level: str, message: str):
 
 ## Deployment Considerations
 
+### Local Setup
+
+**Automated setup scripts available:**
+- **Windows:** `setup.bat` - One-click installation
+- **Mac/Linux:** `setup.sh` - Automated bash script
+
+Both scripts handle:
+- Virtual environment creation (`blog-extractor-env/`)
+- Dependency installation
+- Playwright browser installation
+- Directory structure setup
+
+Users can simply run the setup script and start extracting.
+
 ### Streamlit Cloud
 
 **Full Playwright support enabled!** The app automatically installs browsers on first startup.
@@ -180,15 +194,17 @@ libgbm1, libpango-1.0-0, libcairo2, libasound2, libatspi2.0-0, libwayland-client
 
 ### Other Environments
 
-- **Local:** Install Playwright for best results (`python -m playwright install --with-deps`)
 - **CI/Docker:** Cache virtual environment + run `python -m playwright install --with-deps` during build
-- **Virtual environment:** Required - default `.venv/` or managed via `uv`
+- **Virtual environment:** Uses `blog-extractor-env/` by default (created by setup scripts)
 
 ## Files Overview
 
 - **blog_extractor.py** - Core `BlogExtractor` class (~2000 lines)
 - **extract.py** - CLI wrapper with argparse (~250 lines)
 - **streamlit_app.py** - Web UI with progress tracking (~680 lines)
+- **setup.bat** - Automated Windows setup script (installs everything)
+- **setup.sh** - Automated Mac/Linux setup script (installs everything)
+- **run_extractor.bat** - Quick launcher for Windows (runs CLI extractor)
 - **packages.txt** - System dependencies for Streamlit Cloud Playwright support
 - **requirements.txt** - Full dependencies (CLI + Streamlit)
 - **requirements-cli.txt** - CLI only (no Streamlit, allows newer Pillow)

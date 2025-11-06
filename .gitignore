@@ -23,6 +23,7 @@ MANIFEST
 
 # Virtual Environment
 blog-extractor-env/
+.venv/
 env/
 venv/
 ENV/
@@ -71,9 +72,6 @@ playwright/.cache/
 
 # Streamlit
 .streamlit/
-
-# Batch files (Windows specific)
-*.bat
 
 # Browser downloads and screenshots
 screenshots/

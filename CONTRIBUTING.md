@@ -12,24 +12,40 @@ Thank you for contributing to the blog extraction tool! This guide covers develo
 
 ### Quick Setup
 
+#### Automated (Recommended for First-Time Contributors)
+
+```bash
+# Clone repository
+git clone <repository-url>
+cd blog-tool
+
+# Run setup script
+# Windows: double-click setup.bat
+# Mac/Linux: bash setup.sh
+
+# Install dev dependencies
+blog-extractor-env\Scripts\activate      # Windows
+source blog-extractor-env/bin/activate   # Mac/Linux
+pip install -r requirements-dev.txt
+```
+
+#### Manual Setup (Advanced)
+
 ```bash
 # Clone repository
 git clone <repository-url>
 cd blog-tool
 
 # Create virtual environment
-python -m venv .venv
+python -m venv blog-extractor-env
 
 # Activate virtual environment
-.venv\Scripts\activate          # Windows
-source .venv/bin/activate       # Mac/Linux
+blog-extractor-env\Scripts\activate          # Windows
+source blog-extractor-env/bin/activate       # Mac/Linux
 
 # Install production dependencies
 pip install -r requirements.txt          # Full (CLI + Streamlit)
 # Or for CLI only: pip install -r requirements-cli.txt
-
-# Optional: Enhanced features
-pip install -r requirements-extras.txt   # Better date parsing, validation, async I/O
 
 # Install dev dependencies
 pip install -r requirements-dev.txt
