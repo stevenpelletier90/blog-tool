@@ -118,13 +118,13 @@ Examples:
     parser.add_argument(
         '--download-images',
         action='store_true',
-        default=True,
-        help='Download images locally to output/images/ (default: True, protects against source images being removed)'
+        default=False,
+        help='Download images locally to output/images/ (protects against source images being removed)'
     )
     parser.add_argument(
         '--no-download-images',
         action='store_true',
-        help='Use external image URLs instead of downloading (not recommended)'
+        help='Explicitly disable image downloads (same as default behavior)'
     )
 
     args = parser.parse_args()
