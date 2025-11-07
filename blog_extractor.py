@@ -150,7 +150,12 @@ class BlogExtractor:
 
         # Print to stdout if verbose (for CLI compatibility)
         elif self.verbose:
-            print(message)
+            # Handle Unicode encoding issues on Windows console (cp1252)
+            try:
+                print(message)
+            except UnicodeEncodeError:
+                # Fallback: encode with error replacement for console display
+                print(message.encode('ascii', errors='replace').decode('ascii'))
 
     async def _get_or_create_browser(self) -> Any:
         """Lazily initialize shared async browser instance for concurrent mode"""
