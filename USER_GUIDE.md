@@ -512,7 +512,7 @@ Once you have `blog_posts.xml`, follow these steps to import it to WordPress:
 
 ### Troubleshooting Import
 
-**Problem: "Failed to import media" or images missing**
+#### Problem: "Failed to import media" or images missing
 
 **Causes:**
 
@@ -526,7 +526,7 @@ Once you have `blog_posts.xml`, follow these steps to import it to WordPress:
 2. Check that image URLs are accessible in a web browser
 3. If using CLI, use `--download-images` flag to save local copies, then manually upload to Media Library
 
-**Problem: "XML file is empty" or "Invalid file"**
+#### Problem: "XML file is empty" or "Invalid file"
 
 **Causes:**
 
@@ -539,7 +539,7 @@ Once you have `blog_posts.xml`, follow these steps to import it to WordPress:
 2. If empty or corrupted, re-run the extraction
 3. Check extraction logs for error messages
 
-**Problem: "Duplicate posts after import"**
+#### Problem: "Duplicate posts after import"
 
 **Causes:**
 
@@ -1018,31 +1018,31 @@ For developers and advanced users who want to understand how the tool works unde
 
 ### Content Extraction Pipeline
 
-**Step 1: Fetch Content**
+#### Step 1: Fetch Content
 
 - Try async Playwright (best for JavaScript-heavy sites)
 - Fall back to sync Playwright
 - Fall back to requests library (works everywhere)
 
-**Step 2: Detect Platform**
+#### Step 2: Detect Platform
 
 - Analyze meta tags, CSS classes, URL patterns
 - Select platform-specific extraction rules
 
-**Step 3: Extract Content**
+#### Step 3: Extract Content
 
 - Title, author, date, categories, tags
 - Main content area (excluding navigation/footer)
 - All hyperlinks and images
 
-**Step 4: Process Content**
+#### Step 4: Process Content
 
 - Convert relative URLs to absolute
 - Resolve dynamic image URLs (WebDAM → S3)
 - Normalize Unicode characters
 - Detect duplicates using MD5 hashing
 
-**Step 5: Generate Output**
+#### Step 5: Generate Output
 
 - WordPress WXR 1.2 XML format
 - Gutenberg block conversion
@@ -1192,4 +1192,4 @@ Open an issue or contact your project administrator.
 
 ---
 
-*End of User Guide*
+## End of User Guide

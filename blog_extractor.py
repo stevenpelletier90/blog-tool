@@ -161,7 +161,8 @@ class BlogExtractor:
         """Lazily initialize shared async browser instance for concurrent mode"""
         if self._browser is None and HAS_ASYNC_PLAYWRIGHT and async_playwright is not None:
             self._playwright = await async_playwright().start()
-            self._browser = await self._playwright.chromium.launch(headless=True)
+            if self._playwright is not None:
+                self._browser = await self._playwright.chromium.launch(headless=True)
         return self._browser
 
     async def _get_or_create_context(self) -> Any:
