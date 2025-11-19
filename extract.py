@@ -190,18 +190,28 @@ Examples:
             ) as progress:
                 task = progress.add_task(f"[cyan]Processing {args.concurrent} URLs concurrently...", total=len(urls))
 
-                # Run concurrent extraction
-                results = asyncio.run(extractor.process_urls_concurrently(urls, args.concurrent))
+                # Create progress callback to update the bar in real-time
+                def update_progress(result: dict):
+                    nonlocal success_count, duplicate_count
 
-                # Update progress as complete
-                progress.update(task, completed=len(urls), description="[green][OK] Concurrent extraction complete!")
-
-                # Count and display results
-                for result in results:
                     if result.get('status') == 'success':
                         success_count += 1
+                        title = result.get('title', 'Unknown')[:40]
+                        progress.update(task, description=f"[green]✓ {title}...")
                     elif result.get('status') == 'duplicate':
                         duplicate_count += 1
+                        progress.update(task, description="[yellow]↺ Duplicate skipped")
+                    else:
+                        progress.update(task, description=f"[red]✗ Failed")
+
+                    # Advance the progress bar
+                    progress.advance(task)
+
+                # Run concurrent extraction with progress callback
+                results = asyncio.run(extractor.process_urls_concurrently(urls, args.concurrent, progress_callback=update_progress))
+
+                # Update as complete
+                progress.update(task, description=f"[green]✓ Completed! {success_count} successful, {duplicate_count} duplicates")
         else:
             # Quiet mode - no progress bar
             results = asyncio.run(extractor.process_urls_concurrently(urls, args.concurrent))

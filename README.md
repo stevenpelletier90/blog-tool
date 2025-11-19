@@ -26,6 +26,7 @@ That's it! Everything is installed automatically.
 That's it! Everything is installed automatically.
 
 **What the setup does:**
+
 - Checks if Python is installed (requires Python 3.8+)
 - Creates a virtual environment
 - Installs all required libraries
@@ -41,16 +42,19 @@ You have **2 options**: Web Interface (easier) or Command Line (faster for bulk 
 ### Option 1: Web Interface (Recommended for Beginners)
 
 **Windows:**
-```
+
+```bash
 blog-extractor-env\Scripts\streamlit.exe run streamlit_app.py
 ```
 
 **Mac/Linux:**
-```
+
+```bash
 blog-extractor-env/bin/streamlit run streamlit_app.py
 ```
 
 Then:
+
 1. Your browser will open automatically at `http://localhost:8501`
 2. Paste your blog URLs (one per line)
 3. Click "Extract Blog Posts Now"
@@ -60,7 +64,8 @@ Then:
 ### Option 2: Command Line (For Bulk Extraction)
 
 **Step 1:** Create a file called `urls.txt` with your blog URLs (one per line):
-```
+
+```bash
 https://example.com/blog/post-1
 https://example.com/blog/post-2
 https://example.com/blog/post-3
@@ -69,12 +74,14 @@ https://example.com/blog/post-3
 **Step 2:** Run the extractor:
 
 **Windows:**
-```
+
+```bash
 blog-extractor-env\Scripts\python.exe extract.py
 ```
 
 **Mac/Linux:**
-```
+
+```bash
 blog-extractor-env/bin/python extract.py
 ```
 
@@ -83,7 +90,8 @@ blog-extractor-env/bin/python extract.py
 #### Common Options
 
 **Process 5 URLs at once (3-5x faster):**
-```
+
+```bash
 # Windows
 blog-extractor-env\Scripts\python.exe extract.py --concurrent 5
 
@@ -92,7 +100,8 @@ blog-extractor-env/bin/python extract.py --concurrent 5
 ```
 
 **See all options:**
-```
+
+```bash
 # Windows
 blog-extractor-env\Scripts\python.exe extract.py --help
 
@@ -133,26 +142,33 @@ Once you have the XML file (`blog_posts.xml`):
 ## Troubleshooting
 
 ### "Python is not installed"
+
 Download and install Python 3.8 or newer from [python.org/downloads](https://www.python.org/downloads/)
 **Important:** Check "Add Python to PATH" during installation
 
 ### "Command not found" or "File not found"
+
 Make sure you're running commands from the extracted folder where the files are located
 
 ### Images not appearing in WordPress
+
 - Make sure you checked "Download and import file attachments" during import
 - Images may take a few minutes to download after import
 - Check your WordPress Media Library to see import progress
 
 ### Extraction is slow
+
 Use the `--concurrent 5` option to process 5 URLs simultaneously:
-```
+
+```bash
 blog-extractor-env\Scripts\python.exe extract.py --concurrent 5
 ```
 
 ### Website blocking the tool
+
 Some sites have anti-scraping protection. Try adding a delay:
-```
+
+```bash
 blog-extractor-env\Scripts\python.exe extract.py --delay 5
 ```
 
@@ -208,7 +224,7 @@ You are free to use, modify, and distribute this software for any purpose, inclu
 
 ## Quick Reference Card
 
-```
+```bash
 INSTALLATION (one time):
   Windows:    Double-click setup.bat
   Mac/Linux:  bash setup.sh

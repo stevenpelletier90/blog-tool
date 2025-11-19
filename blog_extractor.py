@@ -464,23 +464,25 @@ class BlogExtractor:
             # Fall back to synchronous version if async not available
             return self.fetch_content(url, max_retries)
 
-        # FAST MODE: If skip_playwright is True, try requests first (10x faster!)
+        # FAST MODE: If skip_playwright is True, try aiohttp first (truly async!)
         # But fall back to Playwright if site blocks requests (403, etc.)
         if self.skip_playwright:
-            self._log("info", "  Fast mode: Trying requests library first...")
+            self._log("info", "  Fast mode: Trying aiohttp first...")
             for attempt in range(max_retries):
                 try:
-                    # Use sync requests in async context (it's fast enough)
-                    response = requests.get(
-                        url,
-                        headers={'User-Agent': random.choice(self.user_agents)},
-                        timeout=30
-                    )
-                    response.raise_for_status()
-                    self._log("info", "  Fast mode succeeded with requests!")
-                    return response.text
+                    # Use aiohttp for TRUE async requests
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            url,
+                            headers={'User-Agent': random.choice(self.user_agents)},
+                            timeout=aiohttp.ClientTimeout(total=30)
+                        ) as response:
+                            response.raise_for_status()
+                            text = await response.text()
+                            self._log("info", "  Fast mode succeeded with aiohttp!")
+                            return text
                 except Exception as e:
-                    self._log("warning", f"  Requests attempt {attempt + 1} failed: {e}")
+                    self._log("warning", f"  Aiohttp attempt {attempt + 1} failed: {e}")
                     if attempt < max_retries - 1:
                         delay = 2 ** attempt
                         self._log("info", f"  Retrying in {delay} seconds...")
@@ -502,28 +504,29 @@ class BlogExtractor:
             else:
                 self._log("info", f"  Platform: {platform} (static HTML → using requests for speed)")
 
-        # STEP 2: If static site, skip Playwright and use requests
+        # STEP 2: If static site, skip Playwright and use async HTTP
         if not needs_js:
-            self._log("info", "  Fetching with requests library (fast path)...")
+            self._log("info", "  Fetching with aiohttp (fast async path)...")
             for attempt in range(max_retries):
                 try:
-                    # Use sync requests in async context (it's fast enough)
-                    response = requests.get(
-                        url,
-                        headers={'User-Agent': random.choice(self.user_agents)},
-                        timeout=30
-                    )
-                    response.raise_for_status()
-                    return response.text
+                    # Use aiohttp for TRUE async requests (enables real concurrency!)
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            url,
+                            headers={'User-Agent': random.choice(self.user_agents)},
+                            timeout=aiohttp.ClientTimeout(total=30)
+                        ) as response:
+                            response.raise_for_status()
+                            return await response.text()
                 except Exception as e:
-                    self._log("warning", f"  Requests attempt {attempt + 1} failed: {e}")
+                    self._log("warning", f"  Aiohttp attempt {attempt + 1} failed: {e}")
                     if attempt < max_retries - 1:
                         delay = 2 ** attempt
                         self._log("info", f"  Retrying in {delay} seconds...")
                         await asyncio.sleep(delay)
 
-            # If requests failed, fall through to Playwright
-            self._log("warning", "  Requests failed, falling back to Playwright...")
+            # If aiohttp failed, fall through to Playwright
+            self._log("warning", "  Aiohttp failed, falling back to Playwright...")
 
         # STEP 3: Try async Playwright for JavaScript-heavy sites (or if requests failed)
         for attempt in range(max_retries):
@@ -1657,10 +1660,16 @@ class BlogExtractor:
             if download_tasks:
                 await asyncio.gather(*download_tasks, return_exceptions=True)
 
-    async def process_urls_concurrently(self, urls: List[str], max_concurrent: int = 5) -> List[Dict[str, Any]]:
+    async def process_urls_concurrently(self, urls: List[str], max_concurrent: int = 5, progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> List[Dict[str, Any]]:
         """Process multiple URLs concurrently with rate limiting
 
         Now includes async image downloads for significantly faster performance.
+        Supports progress callbacks for real-time progress tracking.
+
+        Args:
+            urls: List of URLs to process
+            max_concurrent: Maximum number of concurrent requests
+            progress_callback: Optional callback function called after each URL completes
         """
         if not HAS_ASYNC_PLAYWRIGHT:
             self._log("warning", "Async Playwright not available, falling back to sequential processing")
@@ -1668,6 +1677,8 @@ class BlogExtractor:
             for url in urls:
                 result = self.extract_blog_data(url)
                 results.append(result)
+                if progress_callback:
+                    progress_callback(result)
             return results
 
         self._log("info", f"Processing {len(urls)} URLs with max {max_concurrent} concurrent requests...")
@@ -1678,24 +1689,41 @@ class BlogExtractor:
         # Create tasks for all URLs
         tasks = [self._extract_with_semaphore(url, semaphore) for url in urls]
 
-        # Run all tasks concurrently
-        raw_results: List[Union[Dict[str, Any], BaseException]] = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Handle any exceptions
+        # Run all tasks concurrently and update progress as they complete
         processed_results: List[Dict[str, Any]] = []
-        for i, raw_result in enumerate(raw_results):
-            if isinstance(raw_result, Exception):
-                self._log("error", f"Exception processing {urls[i]}: {raw_result}")
+        completed_count = 0
+
+        for coro in asyncio.as_completed(tasks):
+            try:
+                result = await coro
+                processed_results.append(result)
+                completed_count += 1
+
+                # Log completion
+                status = result.get('status', 'unknown')
+                title = result.get('title', 'Unknown')[:50]
+                self._log("info", f"[{completed_count}/{len(urls)}] {status.upper()}: {title}")
+
+                # Call progress callback if provided
+                if progress_callback:
+                    try:
+                        progress_callback(result)
+                    except Exception as callback_error:
+                        self._log("warning", f"Progress callback error: {callback_error}")
+
+            except Exception as e:
+                self._log("error", f"Exception during processing: {e}")
+                completed_count += 1
                 processed_results.append({
                     'status': 'failed',
-                    'url': urls[i],
-                    'error': str(raw_result)
+                    'url': 'unknown',
+                    'error': str(e)
                 })
-            else:
-                # Type narrowing: raw_result is Dict[str, Any] here
-                result = cast(Dict[str, Any], raw_result)
-                processed_results.append(result)
-
+                if progress_callback:
+                    try:
+                        progress_callback({'status': 'failed', 'error': str(e)})
+                    except Exception as callback_error:
+                        self._log("warning", f"Progress callback error: {callback_error}")
 
         # Cleanup shared browser resources
         await self.close_browser()
