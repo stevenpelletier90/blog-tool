@@ -1,238 +1,232 @@
 # Blog Post Extractor & WordPress Migration Tool
 
-A production-ready tool that extracts blog posts from any platform (Wix, WordPress, Medium, DealerOn, DealerInspire, etc.) and converts them into WordPress-compatible XML format for easy migration.
+Extract blog posts from any website and convert them to WordPress XML format in 3 easy steps.
 
-## Features
+**Supports:** Wix, WordPress, Medium, Squarespace, Blogger, DealerOn, DealerInspire, Webflow, and more!
 
-- **8+ Platform Support**: Wix, Webflow, WordPress, DealerOn, DealerInspire, Medium, Squarespace, Blogger
-- **Smart Content Extraction**: Automatically detects platform and extracts clean content
-- **Image Protection**: Resolves WebDAM/dynamic URLs to permanent S3 URLs for WordPress import
-- **Duplicate Detection**: MD5 content hashing prevents duplicate posts
-- **Concurrent Processing**: Process multiple URLs simultaneously (3-5x faster)
-- **Multiple Interfaces**: CLI and web UI (Streamlit)
-- **WordPress WXR 1.2**: Generates standard WordPress export format
+---
 
-## Quick Start
+## Installation (One-Time Setup)
 
-### Installation
+### Windows
 
-#### Automated Setup (Recommended for Beginners)
+1. **Extract this folder** to your computer
+2. **Double-click `setup.bat`**
+3. Wait for installation to complete (2-5 minutes)
+
+That's it! Everything is installed automatically.
+
+### Mac/Linux
+
+1. **Extract this folder** to your computer
+2. **Open Terminal** in this folder
+3. **Run:** `bash setup.sh`
+4. Wait for installation to complete (2-5 minutes)
+
+That's it! Everything is installed automatically.
+
+**What the setup does:**
+- Checks if Python is installed (requires Python 3.8+)
+- Creates a virtual environment
+- Installs all required libraries
+- Downloads browser components
+- Creates sample files
+
+---
+
+## How to Use
+
+You have **2 options**: Web Interface (easier) or Command Line (faster for bulk jobs)
+
+### Option 1: Web Interface (Recommended for Beginners)
 
 **Windows:**
-
-```bash
-# Just double-click setup.bat
-# It installs everything automatically!
+```
+blog-extractor-env\Scripts\streamlit.exe run streamlit_app.py
 ```
 
 **Mac/Linux:**
-
-```bash
-# Run the setup script
-bash setup.sh
+```
+blog-extractor-env/bin/streamlit run streamlit_app.py
 ```
 
-The setup script automatically:
+Then:
+1. Your browser will open automatically at `http://localhost:8501`
+2. Paste your blog URLs (one per line)
+3. Click "Extract Blog Posts Now"
+4. Download the XML file when complete
+5. Import to WordPress (see below)
 
-- ✅ Checks Python installation
-- ✅ Creates virtual environment
-- ✅ Installs all dependencies
-- ✅ Installs Playwright browsers
-- ✅ Creates necessary folders
-- ✅ Creates sample `urls.txt` file
+### Option 2: Command Line (For Bulk Extraction)
 
-**That's it!** Everything is ready to use.
-
-#### Manual Installation (Advanced Users)
-
-```bash
-# Create virtual environment
-python -m venv blog-extractor-env
-
-# Activate virtual environment
-blog-extractor-env\Scripts\activate          # Windows
-source blog-extractor-env/bin/activate       # Mac/Linux
-
-# Install dependencies
-# For both CLI and web UI:
-pip install -r requirements.txt
-
-# Or CLI only (no Streamlit, includes Pillow 12+):
-pip install -r requirements-cli.txt
-
-# Install Playwright browsers (recommended for best results)
-python -m playwright install chromium
+**Step 1:** Create a file called `urls.txt` with your blog URLs (one per line):
 ```
-
-### Usage
-
-#### Web UI (Recommended)
-
-```bash
-streamlit run streamlit_app.py
-```
-
-Then open <http://localhost:8501> in your browser.
-
-**Features:**
-
-- Paste URLs directly or upload a file
-- Real-time progress tracking
-- Link analysis (internal vs external)
-- Find/replace for domain migration
-- Download XML and extracted links
-
-#### CLI
-
-```bash
-# Basic usage - reads from urls.txt
-python extract.py
-
-# Concurrent processing (3-5x faster)
-python extract.py --concurrent 5
-
-# Multiple output formats
-python extract.py --format all
-
-# Custom settings
-python extract.py --delay 3 --retries 5 --verbose
-
-# Domain migration helpers
-python extract.py --relative-links --no-download-images
-
-# Help
-python extract.py --help
-```
-
-### Input Format
-
-Create a `urls.txt` file with one URL per line:
-
-```text
 https://example.com/blog/post-1
 https://example.com/blog/post-2
 https://example.com/blog/post-3
 ```
 
-### Output
+**Step 2:** Run the extractor:
 
-All output is saved to the `output/` directory:
-
-- **blog_posts.xml** - WordPress WXR 1.2 format (import to WordPress)
-- **extracted_links.txt** - All hyperlinks found by post
-- **images/** - Downloaded images (optional, CLI only with --download-images flag)
-- **blog_posts.json** - JSON format (CLI only)
-- **blog_posts.csv** - CSV format (CLI only)
-
-## Supported Platforms
-
-- **Wix** - Full support including lazy-loaded content
-- **Webflow** - Rich text content extraction
-- **WordPress** - Direct content extraction
-- **DealerOn** - Automotive dealer platform
-- **DealerInspire** - Automotive dealer platform
-- **Medium** - Article extraction
-- **Squarespace** - Blog content
-- **Blogger** - Google's blog platform
-
-## Key Features Explained
-
-### Image Handling
-
-The tool automatically handles images for WordPress import:
-
-1. **Resolves Dynamic URLs**: Follows redirects from WebDAM/PHP endpoints to permanent S3 URLs
-2. **XML Import**: HTTPS URLs included in XML - WordPress downloads images during import
-3. **Optional Backup**: CLI users can use `--download-images` flag to save local copies
-
-### Duplicate Detection
-
-Uses MD5 content hashing to skip duplicate posts automatically. Same content at different URLs? The tool detects it and skips the duplicate.
-
-### Concurrent Processing
-
-Process 5 URLs simultaneously for 3-5x speed improvement:
-
-```bash
-python extract.py --concurrent 5
+**Windows:**
+```
+blog-extractor-env\Scripts\python.exe extract.py
 ```
 
-Safe range: 3-5 concurrent requests (higher values may trigger rate limiting)
+**Mac/Linux:**
+```
+blog-extractor-env/bin/python extract.py
+```
+
+**Step 3:** Find your WordPress XML file in the `output/` folder
+
+#### Common Options
+
+**Process 5 URLs at once (3-5x faster):**
+```
+# Windows
+blog-extractor-env\Scripts\python.exe extract.py --concurrent 5
+
+# Mac/Linux
+blog-extractor-env/bin/python extract.py --concurrent 5
+```
+
+**See all options:**
+```
+# Windows
+blog-extractor-env\Scripts\python.exe extract.py --help
+
+# Mac/Linux
+blog-extractor-env/bin/python extract.py --help
+```
+
+---
 
 ## Importing to WordPress
 
-1. Extract blog posts using this tool
-2. In WordPress admin, go to **Tools → Import**
-3. Choose **WordPress** importer (install if needed)
-4. Upload `output/blog_posts.xml`
-5. Assign authors and download images
-6. Done! Your posts are now in WordPress
+Once you have the XML file (`blog_posts.xml`):
+
+1. Log into your WordPress admin panel
+2. Go to **Tools → Import**
+3. Click **WordPress** (install the WordPress Importer if prompted)
+4. Click **Choose File** and select `blog_posts.xml`
+5. Click **Upload file and import**
+6. Assign authors (or create new ones)
+7. Check **"Download and import file attachments"** to import images
+8. Click **Submit**
+9. Done! Your blog posts are now in WordPress
+
+---
+
+## What Gets Extracted
+
+✅ Blog post titles
+✅ Full content (text, images, formatting)
+✅ Author names
+✅ Publication dates
+✅ Categories and tags
+✅ All links (internal and external)
+✅ Images (WordPress downloads them automatically)
+
+---
 
 ## Troubleshooting
 
-### Windows: Playwright Subprocess Error
+### "Python is not installed"
+Download and install Python 3.8 or newer from [python.org/downloads](https://www.python.org/downloads/)
+**Important:** Check "Add Python to PATH" during installation
 
-If you get asyncio subprocess errors on Windows, the tool automatically fixes this. No action needed.
+### "Command not found" or "File not found"
+Make sure you're running commands from the extracted folder where the files are located
 
-### Playwright Not Installed
+### Images not appearing in WordPress
+- Make sure you checked "Download and import file attachments" during import
+- Images may take a few minutes to download after import
+- Check your WordPress Media Library to see import progress
 
-The tool falls back to `requests` library if Playwright isn't installed. For best results (JavaScript-heavy sites), install Playwright:
-
-```bash
-python -m playwright install --with-deps
+### Extraction is slow
+Use the `--concurrent 5` option to process 5 URLs simultaneously:
+```
+blog-extractor-env\Scripts\python.exe extract.py --concurrent 5
 ```
 
-### Rate Limiting / IP Bans
-
-Reduce concurrent requests or add delay between requests:
-
-```bash
-python extract.py --concurrent 3 --delay 5
+### Website blocking the tool
+Some sites have anti-scraping protection. Try adding a delay:
+```
+blog-extractor-env\Scripts\python.exe extract.py --delay 5
 ```
 
-### Images Not Appearing in WordPress
+---
 
-Images are imported by WordPress from the HTTPS URLs in the XML file. If images don't appear:
+## Output Files
 
-1. Ensure your WordPress server has internet access and can fetch from HTTPS URLs
-2. Check WordPress Media Library after import - images may take time to download
-3. Try the Tools → Import → WordPress → Run Importer again if some images failed
-4. Verify resolved image URLs are still accessible (check output XML file)
+All files are saved to the `output/` folder:
 
-## Development
+- **blog_posts.xml** - WordPress import file (this is what you need!)
+- **extracted_links.txt** - All links found in your blog posts
+- **blog_posts.json** - JSON format (optional, for developers)
+- **blog_posts.csv** - CSV format (optional, for spreadsheets)
 
-### Running Tests
+---
 
-```bash
-# Install dev dependencies
-pip install -r requirements-dev.txt
+## Need Help?
 
-# Linting
-ruff check .
+**Common Questions:**
 
-# Type checking
-mypy blog_extractor.py extract.py streamlit_app.py
+**Q: Do I need to keep the virtual environment folder?**
+A: Yes! The `blog-extractor-env` folder contains all the installed libraries. Don't delete it.
 
-# Tests
-pytest
-```
+**Q: Can I move this folder?**
+A: Yes! Just move the entire folder. Everything will still work.
 
-### Adding Platform Support
+**Q: How do I extract more blog posts later?**
+A: Just add new URLs to `urls.txt` and run the extractor again. Or use the web interface.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for details on adding support for new blog platforms.
+**Q: What if I have 1000+ blog posts?**
+A: Use the command line with `--concurrent 5` option. It can handle thousands of URLs.
 
-## Technical Details
+**Q: Can I extract from password-protected blogs?**
+A: No, the blog posts must be publicly accessible.
 
-For architecture details, design patterns, and code references, see:
+---
 
-- [CLAUDE.md](CLAUDE.md) - AI-focused critical constraints
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Technical deep dive
-- [CONTRIBUTING.md](CONTRIBUTING.md) - Developer guide
+## Version
+
+Current version: **1.0.0**
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
+
+---
 
 ## License
 
-See LICENSE file for details.
+This software is licensed under the MIT License. See [LICENSE](LICENSE) file for details.
 
-## Support
+You are free to use, modify, and distribute this software for any purpose, including commercial use.
 
-For issues, questions, or feature requests, please open an issue on the repository.
+---
+
+## Quick Reference Card
+
+```
+INSTALLATION (one time):
+  Windows:    Double-click setup.bat
+  Mac/Linux:  bash setup.sh
+
+WEB INTERFACE:
+  Windows:    blog-extractor-env\Scripts\streamlit.exe run streamlit_app.py
+  Mac/Linux:  blog-extractor-env/bin/streamlit run streamlit_app.py
+
+COMMAND LINE:
+  Windows:    blog-extractor-env\Scripts\python.exe extract.py
+  Mac/Linux:  blog-extractor-env/bin/python extract.py
+
+FASTER EXTRACTION (5x speed):
+  Add --concurrent 5 to the command
+
+OUTPUT:
+  Look in the output/ folder for blog_posts.xml
+
+IMPORT TO WORDPRESS:
+  Tools → Import → WordPress → Upload blog_posts.xml
+```

@@ -4,6 +4,8 @@ Blog Extractor CLI - Enhanced with argparse
 Extract blog posts from URLs and convert to multiple formats.
 """
 
+__version__ = "1.0.0"
+
 # Setup Windows environment before any other imports
 import sys
 if sys.platform.startswith('win'):
@@ -55,6 +57,11 @@ Examples:
         """
     )
 
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f'%(prog)s {__version__}'
+    )
     parser.add_argument(
         '--urls',
         default=URLS_FILE,

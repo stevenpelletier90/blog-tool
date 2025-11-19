@@ -4,6 +4,8 @@ Streamlit Web Interface for Blog Extractor Tool
 Provides a user-friendly web interface for extracting blog posts and converting to WordPress XML.
 """
 
+__version__ = "1.0.0"
+
 # Setup Windows environment before any other imports
 import sys
 if sys.platform.startswith('win'):
@@ -115,7 +117,7 @@ def setup_session_state():
 def display_header():
     """Display the main header and instructions"""
     st.title("📰 Blog Extractor Tool")
-    st.markdown("**Convert blog posts to WordPress XML format with comprehensive link extraction**")
+    st.markdown(f"**Convert blog posts to WordPress XML format with comprehensive link extraction** | Version {__version__}")
 
     st.info("💡 **Quick Start:** 1) Paste URLs → 2) Click Extract → 3) Download XML | ⚡ Concurrent processing enabled by default!")
 

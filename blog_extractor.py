@@ -4,6 +4,8 @@ Blog Content Extractor - Simplified with Playwright Only
 Extracts blog posts and converts to WordPress XML using only the best tool.
 """
 
+__version__ = "1.0.0"
+
 # Standard library imports
 import asyncio
 import csv
