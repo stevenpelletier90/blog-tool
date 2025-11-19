@@ -638,6 +638,18 @@ class BlogExtractor:
                             categories.add(cat)
                 return list(categories)
 
+        # WordPress - category links with rel="category tag" (Earnhardt Hyundai, etc.)
+        category_tag_links = soup.find_all('a', rel='category tag')
+        if category_tag_links:
+            categories = set()
+            for elem in category_tag_links:
+                if isinstance(elem, Tag):
+                    cat = elem.get_text().strip()
+                    if cat:
+                        categories.add(cat)
+            if categories:
+                return list(categories)
+
         # Wix-specific selectors (very targeted)
         wix_selectors = [
             'ul[aria-label="Post categories"] a',
@@ -766,6 +778,8 @@ class BlogExtractor:
             'section[data-hook="post-description"]',
             # DealerInspire - actual blog content only (excludes author/social/category metadata)
             'div.entry',
+            # WordPress dealer blogs (Earnhardt, etc.) - actual blog content
+            'div.blogContent',
             # WordPress and generic
             'article .entry-content',
             'article',
@@ -790,6 +804,35 @@ class BlogExtractor:
                 # Remove duplicate title (if content_title div exists)
                 for title_div in content_elem.find_all(class_='content_title'):
                     title_div.decompose()
+
+                # Remove post navigation (prev/next links) - WordPress/dealer blogs
+                for nav in content_elem.find_all(class_='post-navigation'):
+                    nav.decompose()
+
+                # Remove duplicate title and date divs - dealer blog pattern
+                for title_div in content_elem.find_all(class_='titleDiv'):
+                    title_div.decompose()
+                for date_div in content_elem.find_all(class_='dateDiv'):
+                    date_div.decompose()
+
+                # Remove social sharing icons
+                for sharing in content_elem.find_all(class_='sharingIcons'):
+                    sharing.decompose()
+
+                # Remove post metadata (categories, "Posted in" footer)
+                for meta in content_elem.find_all(class_='postmetadata'):
+                    meta.decompose()
+
+                # Remove any paragraphs containing "Posted in" (category footer)
+                for p in content_elem.find_all('p'):
+                    p_text = p.get_text().strip()
+                    if p_text.startswith('Posted in') or 'Comments Off' in p_text:
+                        p.decompose()
+
+                # Remove "Connect with us" sections - common footer element
+                for elem in content_elem.find_all(['h2', 'h3', 'h4']):
+                    if 'Connect with us' in elem.get_text():
+                        elem.decompose()
 
                 # Get HTML content instead of just text
                 html_content = content_elem.decode_contents()
@@ -1455,8 +1498,17 @@ class BlogExtractor:
         platform = self.detect_platform(soup)
 
         # Extract data
+        # IMPORTANT: Extract categories/tags BEFORE extract_content,
+        # because extract_content removes postmetadata elements
         title = self.extract_title(soup)
+        author = self.extract_author(soup)
+        date = self.extract_date(soup, url)
+        categories = self.extract_categories(soup)
+        tags = self.extract_tags(soup)
+
+        # Extract content AFTER categories/tags (modifies soup)
         content = self.extract_content(soup)
+        links = self.extract_links(soup, url)
 
         # Check for duplicate content
         if content:
@@ -1473,12 +1525,6 @@ class BlogExtractor:
                 else:
                     self._log("warning", "  [WARNING] Duplicate content detected - including anyway")
             self.seen_hashes.add(content_hash)
-
-        author = self.extract_author(soup)
-        date = self.extract_date(soup, url)
-        categories = self.extract_categories(soup)
-        tags = self.extract_tags(soup)
-        links = self.extract_links(soup, url)
 
         # Calculate text length for display (strip HTML tags for counting)
         text_for_counting = BeautifulSoup(content, 'html.parser').get_text() if content else ""
@@ -1524,8 +1570,17 @@ class BlogExtractor:
         platform = self.detect_platform(soup)
 
         # Extract data (all synchronous, but fast)
+        # IMPORTANT: Extract categories/tags BEFORE extract_content,
+        # because extract_content removes postmetadata elements
         title = self.extract_title(soup)
+        author = self.extract_author(soup)
+        date = self.extract_date(soup, url)
+        categories = self.extract_categories(soup)
+        tags = self.extract_tags(soup)
+
+        # Extract content AFTER categories/tags (modifies soup)
         content = self.extract_content(soup)
+        links = self.extract_links(soup, url)
 
         # Check for duplicate content
         if content:
@@ -1542,12 +1597,6 @@ class BlogExtractor:
                 else:
                     self._log("warning", "  [WARNING] Duplicate content detected - including anyway")
             self.seen_hashes.add(content_hash)
-
-        author = self.extract_author(soup)
-        date = self.extract_date(soup, url)
-        categories = self.extract_categories(soup)
-        tags = self.extract_tags(soup)
-        links = self.extract_links(soup, url)
 
         # Calculate text length for display (strip HTML tags for counting)
         text_for_counting = BeautifulSoup(content, 'html.parser').get_text() if content else ""
