@@ -34,7 +34,6 @@ from blog_extractor import BlogExtractor
 
 # Install Playwright browsers on Streamlit Cloud (runs once on first startup)
 # This is required because Streamlit Cloud doesn't have browsers pre-installed
-import os
 import subprocess
 from pathlib import Path
 
@@ -449,7 +448,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
                 activity_messages.append(f"❌ Failed: {message[:60]}...")
             elif 'Duplicate content' in message or '[SKIP]' in message:
                 st.info(f"⏭️ {message}")
-                activity_messages.append(f"⏭️ Skipped: Duplicate content")
+                activity_messages.append("⏭️ Skipped: Duplicate content")
 
     # Initialize extractor with callback
     extractor = BlogExtractor(
@@ -500,7 +499,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
         successful = len(st.session_state.extraction_results)
         duplicates = len(st.session_state.duplicate_log)
         failed = len(st.session_state.error_log)
-        success_rate = (successful / counters['total'] * 100) if counters['total'] > 0 else 0
+        _ = (successful / counters['total'] * 100) if counters['total'] > 0 else 0  # success_rate for future use
 
         # Show activity log after completion
         if activity_messages:

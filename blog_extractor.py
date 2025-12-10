@@ -22,7 +22,7 @@ import time
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, cast
 from urllib.parse import urljoin, urlparse
 
 if TYPE_CHECKING:
@@ -262,9 +262,6 @@ class BlogExtractor:
 
         # Platforms that REQUIRE Playwright (JavaScript-heavy)
         js_heavy_platforms = {'wix', 'webflow', 'dealeron', 'dealerinspire'}
-
-        # Platforms that DON'T need Playwright (static HTML)
-        static_platforms = {'wordpress', 'blogger', 'medium', 'squarespace', 'generic'}
 
         return platform.lower() in js_heavy_platforms
 

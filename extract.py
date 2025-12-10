@@ -202,7 +202,7 @@ Examples:
                         duplicate_count += 1
                         progress.update(task, description="[yellow]↺ Duplicate skipped")
                     else:
-                        progress.update(task, description=f"[red]✗ Failed")
+                        progress.update(task, description="[red]✗ Failed")
 
                     # Advance the progress bar
                     progress.advance(task)
