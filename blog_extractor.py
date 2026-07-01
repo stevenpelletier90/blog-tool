@@ -1300,21 +1300,46 @@ class BlogExtractor:
     def _table_to_block(self, element: Tag) -> str:
         """Convert a <table> to a WordPress table block.
 
-        Simple tables become a native wp:table block; tables with merged cells
-        (colspan/rowspan) or nested tables fall back to a wp:html block, which
-        preserves the exact markup and always imports without validation errors.
+        Native wp:table cells hold inline content only. Simple tables become a
+        native wp:table block; tables with merged cells (colspan/rowspan), nested
+        tables, or block-level content inside a cell fall back to a wp:html block,
+        which preserves the exact markup and always imports without validation errors.
         """
+        # The upstream <br><br> -> paragraph pass can inject <p> inside a cell.
+        # Convert those to <br> line breaks so simple tables stay valid-native.
+        for cell in element.find_all(['td', 'th']):
+            if not isinstance(cell, Tag):
+                continue
+            for para in cell.find_all('p'):
+                if para.previous_sibling is not None:
+                    line_break = BeautifulSoup('<br/>', 'html.parser').br
+                    if line_break is not None:
+                        para.insert_before(line_break)
+                para.unwrap()
+
         has_merged = bool(element.find(['td', 'th'], attrs={'colspan': True})
                           or element.find(['td', 'th'], attrs={'rowspan': True}))
         has_nested = element.find('table') is not None
+        block_tags = ['p', 'div', 'ul', 'ol', 'blockquote', 'table', 'figure',
+                      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'pre', 'hr']
+        has_block_in_cell = any(
+            isinstance(cell, Tag) and cell.find(block_tags) is not None
+            for cell in element.find_all(['td', 'th'])
+        )
         table_html = str(element)
-        if has_merged or has_nested:
+        if has_merged or has_nested or has_block_in_cell:
             return f'<!-- wp:html -->\n{table_html}\n<!-- /wp:html -->'
         return (f'<!-- wp:table -->\n<figure class="wp-block-table">{table_html}</figure>\n'
                 f'<!-- /wp:table -->')
 
     def _validate_gutenberg(self, content: str) -> List[str]:
-        """Return structural issues; an empty list means every wp: block comment is balanced."""
+        """Return structural issues; an empty list means the content is structurally sound.
+
+        Checks two malformation classes: (1) unbalanced wp: block comments, and
+        (2) block-level elements inside a native wp:table cell (which trigger a
+        WordPress block-validation error). wp:html blocks are exempt from (2) by
+        design -- they intentionally carry arbitrary raw markup.
+        """
         if not content:
             return []
         from collections import Counter
@@ -1327,6 +1352,14 @@ class BlogExtractor:
                 issues.append(
                     f"unbalanced wp:{name} ({open_counts[name]} open / {close_counts[name]} close)"
                 )
+        # Native table cells must be inline-only
+        soup = BeautifulSoup(content, 'html.parser')
+        block_tags = ['p', 'div', 'ul', 'ol', 'blockquote', 'table', 'figure', 'pre']
+        for figure in soup.find_all('figure', class_='wp-block-table'):
+            if any(isinstance(cell, Tag) and cell.find(block_tags) is not None
+                   for cell in figure.find_all(['td', 'th'])):
+                issues.append('block-level element inside a native wp:table cell')
+                break
         return issues
 
     def detect_content_warnings(self, content: str) -> List[str]:

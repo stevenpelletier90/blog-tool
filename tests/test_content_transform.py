@@ -55,6 +55,24 @@ def test_merged_cell_table_falls_back_to_html_block(ex):
     assert "<!-- wp:table -->" not in out
 
 
+def test_br_in_cell_does_not_inject_paragraph(ex):
+    # The upstream <br><br> -> paragraph pass must not put a <p> inside a table cell
+    from bs4 import BeautifulSoup
+    out = to_blocks(ex, "<table><tbody><tr><td>a<br><br>b</td></tr></tbody></table>")
+    soup = BeautifulSoup(out, "html.parser")
+    assert all(cell.find("p") is None for cell in soup.find_all(["td", "th"]))
+    assert ex._validate_gutenberg(out) == []
+
+
+def test_table_with_block_cell_falls_back_to_html(ex):
+    # A cell containing a block element (list) can't be a valid native table block
+    raw = "<table><tbody><tr><td><ul><li>x</li></ul></td></tr></tbody></table>"
+    out = to_blocks(ex, raw)
+    assert "<!-- wp:html -->" in out
+    assert "<!-- wp:table -->" not in out
+    assert ex._validate_gutenberg(out) == []
+
+
 def test_table_cells_keep_links_and_escape_safely(ex):
     raw = (
         '<table><tbody><tr><td><a href="https://x.com">Deal</a></td>'
