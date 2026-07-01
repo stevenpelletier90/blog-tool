@@ -952,12 +952,19 @@ class BlogExtractor:
                     img.insert_after(NavigableString(' '))
                     img.decompose()
 
-        # Define allowed tags (semantic HTML only)
+        # Define allowed tags (semantic HTML preserved for WordPress)
         # Note: b/i tags are normalized to strong/em before this check
         allowed_tags = {
             'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
             'strong', 'em', 'u', 'ul', 'ol', 'li',
-            'blockquote', 'pre', 'code', 'a'
+            'blockquote', 'pre', 'code', 'a',
+            # Tables (preserved as WordPress table blocks)
+            'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+            'caption', 'colgroup', 'col',
+            # Block-level siblings the old whitelist silently dropped
+            'hr', 'figure', 'figcaption', 'dl', 'dt', 'dd',
+            # Inline semantic tags (valid inside paragraphs/cells)
+            'sub', 'sup', 'mark', 'del', 'ins', 'abbr', 'cite', 's',
         }
 
         # Add img to allowed tags if we're including images
@@ -967,7 +974,13 @@ class BlogExtractor:
         # Define which attributes to keep for specific tags
         allowed_attrs = {
             'a': ['href', 'class', 'data-is-button'],  # Allow class and button marker for links
-            'img': ['src', 'alt', 'title', 'width', 'height', 'class']  # Image attributes
+            'img': ['src', 'alt', 'title', 'width', 'height', 'class'],  # Image attributes
+            'th': ['colspan', 'rowspan', 'scope'],  # Table header cell spans
+            'td': ['colspan', 'rowspan'],  # Table data cell spans
+            'ol': ['start', 'type', 'reversed'],  # Ordered-list semantics
+            'col': ['span'],
+            'colgroup': ['span'],
+            'abbr': ['title'],  # Abbreviation expansion
         }
 
         # Remove unwanted elements but keep their content
@@ -1138,7 +1151,7 @@ class BlogExtractor:
         for element in soup.children:
             if isinstance(element, Tag) and element.name:
                 # Check if it's a block-level element
-                if element.name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre', 'img']:
+                if element.name in ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote', 'pre', 'img', 'table', 'hr', 'figure', 'dl']:
                     # Flush any accumulated inline content first
                     if current_paragraph_parts:
                         para_content = ''.join(str(p) for p in current_paragraph_parts)
@@ -1196,20 +1209,28 @@ class BlogExtractor:
 
         elif tag_name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
             level = int(tag_name[1])
+            if isinstance(element, Tag):
+                element['class'] = 'wp-block-heading'  # Match WordPress-native heading markup
             content = str(element)
             return f'<!-- wp:heading {{"level":{level}}} -->\n{content}\n<!-- /wp:heading -->'
 
         elif tag_name in ['ul', 'ol']:
+            if isinstance(element, Tag):
+                element['class'] = 'wp-block-list'  # Match WordPress-native list markup
             content = str(element)
             return f'<!-- wp:list -->\n{content}\n<!-- /wp:list -->'
 
         elif tag_name == 'blockquote':
-            inner_content = element.decode_contents()
+            inner_content = element.decode_contents().strip()
+            # WordPress quote blocks expect block-level inner content; wrap bare text in <p>
+            if not re.search(r'<(p|h[1-6]|ul|ol|blockquote|figure|table)\b', inner_content, re.IGNORECASE):
+                inner_content = f'<p>{inner_content}</p>'
             return f'<!-- wp:quote -->\n<blockquote class="wp-block-quote">{inner_content}</blockquote>\n<!-- /wp:quote -->'
 
         elif tag_name == 'pre':
             if element.find('code'):
-                content = element.get_text()
+                # Escape so <, >, & inside code cannot produce malformed markup
+                content = html.escape(element.get_text())
                 return f'<!-- wp:code -->\n<pre class="wp-block-code"><code>{content}</code></pre>\n<!-- /wp:code -->'
             else:
                 content = str(element)
@@ -1239,6 +1260,30 @@ class BlogExtractor:
                 return f'<!-- wp:image -->\n<figure class="wp-block-image">{img_html}</figure>\n<!-- /wp:image -->'
             return ""
 
+        elif tag_name == 'table' and isinstance(element, Tag):
+            return self._table_to_block(element)
+
+        elif tag_name == 'hr':
+            return '<!-- wp:separator -->\n<hr class="wp-block-separator"/>\n<!-- /wp:separator -->'
+
+        elif tag_name == 'figure' and isinstance(element, Tag):
+            img = element.find('img')
+            figcaption = element.find('figcaption')
+            if img is not None and isinstance(img, Tag) and self.include_images:
+                from urllib.parse import unquote
+                src = img.get('src', '')
+                alt = unquote(str(img.get('alt', ''))) if img.get('alt') else ''
+                img_html = f'<img src="{src}" alt="{alt}"/>' if alt else f'<img src="{src}"/>'
+                cap = figcaption.decode_contents().strip() if isinstance(figcaption, Tag) else ''
+                cap_html = f'<figcaption class="wp-element-caption">{cap}</figcaption>' if cap else ''
+                return f'<!-- wp:image -->\n<figure class="wp-block-image">{img_html}{cap_html}</figure>\n<!-- /wp:image -->'
+            # No usable image (or images excluded): preserve exact markup as a valid HTML block
+            return f'<!-- wp:html -->\n{str(element)}\n<!-- /wp:html -->'
+
+        elif tag_name == 'dl':
+            # No native definition-list block; preserve exact markup (always imports cleanly)
+            return f'<!-- wp:html -->\n{str(element)}\n<!-- /wp:html -->'
+
         else:
             # For other elements, wrap in paragraph or return as-is
             content = str(element)
@@ -1251,6 +1296,55 @@ class BlogExtractor:
             else:
                 # Block elements - wrap in paragraph
                 return f'<!-- wp:paragraph -->\n<p>{content}</p>\n<!-- /wp:paragraph -->'
+
+    def _table_to_block(self, element: Tag) -> str:
+        """Convert a <table> to a WordPress table block.
+
+        Simple tables become a native wp:table block; tables with merged cells
+        (colspan/rowspan) or nested tables fall back to a wp:html block, which
+        preserves the exact markup and always imports without validation errors.
+        """
+        has_merged = bool(element.find(['td', 'th'], attrs={'colspan': True})
+                          or element.find(['td', 'th'], attrs={'rowspan': True}))
+        has_nested = element.find('table') is not None
+        table_html = str(element)
+        if has_merged or has_nested:
+            return f'<!-- wp:html -->\n{table_html}\n<!-- /wp:html -->'
+        return (f'<!-- wp:table -->\n<figure class="wp-block-table">{table_html}</figure>\n'
+                f'<!-- /wp:table -->')
+
+    def _validate_gutenberg(self, content: str) -> List[str]:
+        """Return structural issues; an empty list means every wp: block comment is balanced."""
+        if not content:
+            return []
+        from collections import Counter
+        opens = re.findall(r'<!--\s*wp:([a-z0-9/-]+)(?:\s|-->)', content)
+        closes = re.findall(r'<!--\s*/wp:([a-z0-9/-]+)\s*-->', content)
+        open_counts, close_counts = Counter(opens), Counter(closes)
+        issues: List[str] = []
+        for name in sorted(set(open_counts) | set(close_counts)):
+            if open_counts[name] != close_counts[name]:
+                issues.append(
+                    f"unbalanced wp:{name} ({open_counts[name]} open / {close_counts[name]} close)"
+                )
+        return issues
+
+    def detect_content_warnings(self, content: str) -> List[str]:
+        """Human-readable review flags for a post's converted content.
+
+        Flags preserved tables (which the migration team may want to eyeball)
+        and any structurally malformed Gutenberg blocks.
+        """
+        warnings_list: List[str] = []
+        if content:
+            soup = BeautifulSoup(content, 'html.parser')
+            tables = [t for t in soup.find_all('table') if not t.find_parent('table')]
+            if tables:
+                n = len(tables)
+                warnings_list.append(f"{n} table{'s' if n != 1 else ''} preserved - review formatting")
+        for issue in self._validate_gutenberg(content):
+            warnings_list.append(f"malformed block: {issue}")
+        return warnings_list
 
     def extract_author(self, soup: BeautifulSoup) -> str:
         """Extract author information"""
@@ -1534,6 +1628,11 @@ class BlogExtractor:
         # Extract image URLs from content for WordPress attachments
         images = self.extract_images_from_content(content) if self.include_images else []
 
+        # Content review flags (tables preserved, any malformed blocks)
+        content_warnings = self.detect_content_warnings(content)
+        for _w in content_warnings:
+            self._log('warning', f"  [REVIEW] {_w}")
+
         data = {
             'status': 'success',
             'url': url,
@@ -1547,6 +1646,7 @@ class BlogExtractor:
             'links': links,
             'platform': platform,
             'images': images,  # Add images for WordPress attachment items
+            'warnings': content_warnings,  # Review flags surfaced in CLI/UI
         }
 
         self.extracted_data.append(data)
@@ -1611,6 +1711,11 @@ class BlogExtractor:
             image_urls = [img['src'] for img in images]
             await self._batch_download_images_async(image_urls)
 
+        # Content review flags (tables preserved, any malformed blocks)
+        content_warnings = self.detect_content_warnings(content)
+        for _w in content_warnings:
+            self._log('warning', f"  [REVIEW] {_w}")
+
         data = {
             'status': 'success',
             'url': url,
@@ -1624,6 +1729,7 @@ class BlogExtractor:
             'links': links,
             'platform': platform,
             'images': images,  # Add images for WordPress attachment items
+            'warnings': content_warnings,  # Review flags surfaced in CLI/UI
         }
 
         self.extracted_data.append(data)
