@@ -215,8 +215,8 @@ ruff check blog_extractor.py
 ### Type Checking
 
 ```bash
-# Check all main files
-mypy blog_extractor.py extract.py streamlit_app.py
+# Check all source files
+mypy blog_extractor.py extract.py streamlit_app.py create_distribution.py
 
 # Check specific file
 mypy blog_extractor.py
@@ -256,7 +256,7 @@ pytest --cov=blog_extractor
 ### Before Submitting
 
 1. **Lint your code:** `ruff check . --fix`
-2. **Type check:** `mypy blog_extractor.py extract.py streamlit_app.py`
+2. **Type check:** `mypy blog_extractor.py extract.py streamlit_app.py create_distribution.py`
 3. **Run tests:** `pytest`
 4. **Test manually:** Extract real blog posts from the platform
 5. **Update docs:** Add platform to README.md if applicable

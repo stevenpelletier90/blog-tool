@@ -857,17 +857,17 @@ A: **Yes!** Playwright runs in headless mode by default. You can deploy to:
 
 The tool has been **tested and optimized** for these platforms:
 
-| Platform | Status | Notes |
-|----------|--------|-------|
-| **Wix** | ✅ Fully Supported | Lazy-loaded content, JavaScript rendering |
-| **Webflow** | ✅ Fully Supported | Rich text content extraction |
-| **WordPress** | ✅ Fully Supported | Direct content extraction |
-| **Squarespace** | ✅ Fully Supported | Blog content |
-| **Medium** | ✅ Fully Supported | Article extraction |
-| **Blogger** | ✅ Fully Supported | Google's blog platform |
-| **DealerOn** | ✅ Fully Supported | Automotive dealer blogs |
-| **DealerInspire** | ✅ Fully Supported | Automotive dealer blogs |
-| **Custom/Unknown** | ⚠️ Generic Fallback | May work - test first |
+| Platform           | Status              | Notes                                     |
+| ------------------ | ------------------- | ----------------------------------------- |
+| **Wix**            | ✅ Fully Supported  | Lazy-loaded content, JavaScript rendering |
+| **Webflow**        | ✅ Fully Supported  | Rich text content extraction              |
+| **WordPress**      | ✅ Fully Supported  | Direct content extraction                 |
+| **Squarespace**    | ✅ Fully Supported  | Blog content                              |
+| **Medium**         | ✅ Fully Supported  | Article extraction                        |
+| **Blogger**        | ✅ Fully Supported  | Google's blog platform                    |
+| **DealerOn**       | ✅ Fully Supported  | Automotive dealer blogs                   |
+| **DealerInspire**  | ✅ Fully Supported  | Automotive dealer blogs                   |
+| **Custom/Unknown** | ⚠️ Generic Fallback | May work - test first                     |
 
 ### How Platform Detection Works
 
@@ -903,36 +903,36 @@ python extract.py [OPTIONS]
 
 **Input Options:**
 
-| Flag | Description | Default |
-|------|-------------|---------|
+| Flag           | Description                  | Default    |
+| -------------- | ---------------------------- | ---------- |
 | `--input FILE` | Path to input file with URLs | `urls.txt` |
 
 **Processing Options:**
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--concurrent N` | Process N URLs simultaneously | `1` (sequential) |
-| `--delay N` | Wait N seconds between requests | `2` |
-| `--retries N` | Retry failed URLs N times | `3` |
+| Flag             | Description                     | Default          |
+| ---------------- | ------------------------------- | ---------------- |
+| `--concurrent N` | Process N URLs simultaneously   | `1` (sequential) |
+| `--delay N`      | Wait N seconds between requests | `2`              |
+| `--retries N`    | Retry failed URLs N times       | `3`              |
 
 **Output Options:**
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--format FORMAT` | Output format: `xml`, `json`, `csv`, `all` | `xml` |
-| `--output DIR` | Output directory path | `output` |
+| Flag              | Description                                | Default  |
+| ----------------- | ------------------------------------------ | -------- |
+| `--format FORMAT` | Output format: `xml`, `json`, `csv`, `all` | `xml`    |
+| `--output DIR`    | Output directory path                      | `output` |
 
 **Image Options:**
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `--download-images` | Download images to local folder | `False` |
-| `--relative-links` | Keep links relative (for domain migration) | `False` (absolute) |
+| Flag                | Description                                | Default            |
+| ------------------- | ------------------------------------------ | ------------------ |
+| `--download-images` | Download images to local folder            | `False`            |
+| `--relative-links`  | Keep links relative (for domain migration) | `False` (absolute) |
 
 **Logging Options:**
 
-| Flag | Description | Default |
-|------|-------------|---------|
+| Flag        | Description        | Default |
+| ----------- | ------------------ | ------- |
 | `--verbose` | Show detailed logs | `False` |
 
 **Examples:**

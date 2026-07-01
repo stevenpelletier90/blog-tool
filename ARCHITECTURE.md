@@ -82,7 +82,6 @@ blog-tool/
 ├── streamlit_app.py       # Web UI
 ├── requirements.txt           # Full dependencies (CLI + Streamlit)
 ├── requirements-cli.txt       # CLI only (minimal deps)
-├── requirements-streamlit.txt # Streamlit + dependencies
 ├── requirements-dev.txt       # Dev tools (ruff, mypy, pytest)
 ├── urls.txt              # Input file (one URL per line)
 ├── output/               # Generated output
@@ -497,7 +496,7 @@ CMD ["streamlit", "run", "streamlit_app.py"]
 - name: Run tests
   run: |
     ruff check .
-    mypy blog_extractor.py extract.py streamlit_app.py
+    mypy blog_extractor.py extract.py streamlit_app.py create_distribution.py
     pytest
 ```
 

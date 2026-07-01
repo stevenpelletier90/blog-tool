@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-11-19
 
 ### Added
+
 - **8+ Platform Support**: Wix, Webflow, WordPress, DealerOn, DealerInspire, Medium, Squarespace, Blogger
 - **Smart Content Extraction**: Automatic platform detection with platform-specific selectors
 - **Image Protection**: WebDAM/dynamic URL resolution to permanent S3 URLs for WordPress import
@@ -52,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **License**: MIT License for maximum permissiveness
 
 ### Technical Implementation
+
 - BeautifulSoup with `formatter="minimal"` to prevent WordPress URL truncation
 - HTTPS URLs in WordPress XML (not file:// paths) for server-side image download
 - MD5 content hashing for duplicate detection
@@ -60,16 +62,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Virtual environment setup (`blog-extractor-env/`)
 
 ### Security
+
 - Input validation for URLs
 - Safe HTML parsing with BeautifulSoup
 - No code execution from scraped content
 
 ### Compatibility
+
 - Python 3.8+
 - Windows, Mac, Linux support
 - Streamlit Cloud deployment ready
 
 ### Known Limitations
+
 - Default 5 concurrent requests (higher may trigger rate limiting)
 - MD5 hashing (consider blake2s for FIPS compliance in future)
 - Playwright browser download ~300MB
@@ -81,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 This is the initial production release of the Blog Post Extractor & WordPress Migration Tool. The tool has been extensively tested across multiple blog platforms and is ready for production use.
 
 **Recommended for:**
+
 - Blog migrations to WordPress
 - Content archival
 - Bulk blog post extraction

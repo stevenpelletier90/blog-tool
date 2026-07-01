@@ -49,12 +49,14 @@ soup.decode(formatter="minimal")
 **Location:** Top of extract.py, blog_extractor.py, streamlit_app.py
 
 **Modern Approach (Python 3.14+):**
+
 - No manual event loop policy setting required
 - Python 3.8+ defaults to ProactorEventLoop on Windows (correct for Playwright subprocess support)
 - Code uses `asyncio.run()` which automatically uses the default event loop
 - Only ResourceWarning filter needed to suppress Playwright subprocess cleanup warnings
 
 **Why:**
+
 - WindowsProactorEventLoopPolicy deprecated in Python 3.14, removed in 3.16
 - Default event loop on Windows is already correct for Playwright
 - Modern asyncio patterns (asyncio.run()) handle event loop creation automatically
@@ -160,10 +162,12 @@ def _log(self, level: str, message: str):
 ### Local Setup
 
 **Automated setup scripts available:**
+
 - **Windows:** `setup.bat` - One-click installation
 - **Mac/Linux:** `setup.sh` - Automated bash script
 
 Both scripts handle:
+
 - Virtual environment creation (`blog-extractor-env/`)
 - Dependency installation
 - Playwright browser installation
@@ -176,17 +180,20 @@ Users can simply run the setup script and start extracting.
 **Full Playwright support enabled!** The app automatically installs browsers on first startup.
 
 **Required files:**
+
 - `packages.txt` - System dependencies for browser execution (already included)
 - `streamlit_app.py` - Auto-installs browsers on first run (already configured)
 
 **How it works:**
+
 1. App detects Linux environment (Streamlit Cloud)
 2. Checks if browsers are installed
 3. Runs `playwright install chromium` if needed
 4. Falls back to requests library if installation fails
 
 **packages.txt contents:**
-```
+
+```text
 libnss3, libnspr4, libatk1.0-0, libatk-bridge2.0-0, libcups2, libdrm2,
 libxkbcommon0, libxcomposite1, libxdamage1, libxfixes3, libxrandr2,
 libgbm1, libpango-1.0-0, libcairo2, libasound2, libatspi2.0-0, libwayland-client0
@@ -205,10 +212,10 @@ libgbm1, libpango-1.0-0, libcairo2, libasound2, libatspi2.0-0, libwayland-client
 - **setup.bat** - Automated Windows setup script (installs everything)
 - **setup.sh** - Automated Mac/Linux setup script (installs everything)
 - **run_extractor.bat** - Quick launcher for Windows (runs CLI extractor)
+- **create_distribution.py** - Build script: packages a distribution zip (excludes dev/internal files)
 - **packages.txt** - System dependencies for Streamlit Cloud Playwright support
 - **requirements.txt** - Full dependencies (CLI + Streamlit)
 - **requirements-cli.txt** - CLI only (no Streamlit, allows newer Pillow)
-- **requirements-streamlit.txt** - Streamlit + CLI dependencies
 - **requirements-dev.txt** - Dev tooling (ruff, mypy, pytest)
 
 For detailed architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -220,7 +227,7 @@ For detailed architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).
 ruff check .
 
 # Type checking
-mypy blog_extractor.py extract.py streamlit_app.py
+mypy blog_extractor.py extract.py streamlit_app.py create_distribution.py
 
 # Tests
 pytest

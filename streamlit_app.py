@@ -326,7 +326,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
     status_text = st.empty()
 
     # Progress tracking with active URL monitoring
-    counters = {
+    counters: Dict[str, Any] = {
         'total': len(urls),
         'completed': 0,
         'start_time': time.time(),

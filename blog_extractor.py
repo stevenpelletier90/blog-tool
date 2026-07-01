@@ -290,12 +290,12 @@ class BlogExtractor:
                     return 'blogger'
 
         # Check for platform-specific attributes/classes
-        if soup.find(attrs={'data-hook': True}):  # Wix signature
+        if soup.find(None, attrs={'data-hook': True}):  # Wix signature
             self._log("info", "  Detected platform: Wix (via data-hook)")
             return 'wix'
 
         # Webflow - check for data-wf-domain or data-wf-page attributes
-        if soup.find(attrs={'data-wf-domain': True}) or soup.find(attrs={'data-wf-page': True}):
+        if soup.find(None, attrs={'data-wf-domain': True}) or soup.find(None, attrs={'data-wf-page': True}):
             self._log("info", "  Detected platform: Webflow")
             return 'webflow'
 
