@@ -236,8 +236,8 @@ pytest
 # Run with verbose output
 pytest -v
 
-# Run specific test
-pytest tests/test_extractor.py
+# Run specific test file
+pytest tests/test_content_transform.py
 
 # Run with coverage
 pytest --cov=blog_extractor
@@ -245,6 +245,7 @@ pytest --cov=blog_extractor
 
 **Test areas:**
 
+- Content transform: table preservation, Gutenberg blocks, WordPress validity (`tests/test_content_transform.py`)
 - Platform detection
 - Content extraction
 - Image URL resolution

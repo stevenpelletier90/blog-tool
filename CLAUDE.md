@@ -229,8 +229,8 @@ ruff check .
 # Type checking
 mypy blog_extractor.py extract.py streamlit_app.py create_distribution.py
 
-# Tests
-pytest
+# Tests (content-transform suite: tables, Gutenberg blocks, WP validity)
+pytest tests/
 ```
 
 Install dev tools: `pip install -r requirements-dev.txt`
