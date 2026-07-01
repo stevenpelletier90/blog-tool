@@ -2483,7 +2483,8 @@ class BlogExtractor:
                     'content_length': post['content_length'],
                     'categories': post['categories'],
                     'tags': post['tags'],
-                    'links': post.get('links', [])
+                    'links': post.get('links', []),
+                    'warnings': post.get('warnings', [])
                 }
                 json_data['posts'].append(json_post)
 
@@ -2498,7 +2499,7 @@ class BlogExtractor:
 
         with open(output_path, 'w', encoding='utf-8', newline='') as f:
             fieldnames = ['url', 'title', 'author', 'date', 'platform', 'content_length',
-                         'categories', 'tags', 'links_count', 'content']
+                         'categories', 'tags', 'links_count', 'warnings', 'content']
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
 
@@ -2514,6 +2515,7 @@ class BlogExtractor:
                         'categories': ', '.join(post['categories']),
                         'tags': ', '.join(post['tags']),
                         'links_count': len(post.get('links', [])),
+                        'warnings': '; '.join(post.get('warnings', [])),
                         'content': post['content']
                     }
                     writer.writerow(csv_row)
@@ -2552,7 +2554,8 @@ class BlogExtractor:
                     'content_length': post['content_length'],
                     'categories': post['categories'],
                     'tags': post['tags'],
-                    'links': post.get('links', [])
+                    'links': post.get('links', []),
+                    'warnings': post.get('warnings', [])
                 }
                 json_data['posts'].append(json_post)
 
@@ -2562,7 +2565,7 @@ class BlogExtractor:
         """Generate and return CSV content as string"""
         output = io.StringIO()
         fieldnames = ['url', 'title', 'author', 'date', 'platform', 'content_length',
-                     'categories', 'tags', 'links_count', 'content']
+                     'categories', 'tags', 'links_count', 'warnings', 'content']
         writer = csv.DictWriter(output, fieldnames=fieldnames)
         writer.writeheader()
 
@@ -2578,6 +2581,7 @@ class BlogExtractor:
                     'categories': ', '.join(post['categories']),
                     'tags': ', '.join(post['tags']),
                     'links_count': len(post.get('links', [])),
+                    'warnings': '; '.join(post.get('warnings', [])),
                     'content': post['content']
                 }
                 writer.writerow(csv_row)

@@ -642,10 +642,19 @@ def display_results():
             else:
                 summary_parts.append("🔗 No links")
 
+            # Content review flags (e.g. preserved tables) — visible while collapsed
+            warning_count = len(result.get('warnings', []))
+            if warning_count > 0:
+                summary_parts.append(f"⚠️ {warning_count} flag{'s' if warning_count != 1 else ''}")
+
             summary_text = " • ".join(summary_parts)
 
             # Expandable card for each post
             with st.expander(f"**[{title}]({url})** • {summary_text}", expanded=False):
+                # Content review flags (e.g. preserved tables) shown prominently
+                if result.get('warnings'):
+                    st.warning("⚠️ " + " • ".join(result['warnings']))
+
                 # Full details when expanded
                 col1, col2 = st.columns([3, 1])
 

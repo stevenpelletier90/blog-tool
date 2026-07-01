@@ -318,6 +318,14 @@ Examples:
 
         console.print("\n")
         console.print(table)
+
+        # Surface content review flags (e.g. preserved tables) for the migration team
+        flagged = [p for p in extractor.extracted_data
+                   if p.get('status') == 'success' and p.get('warnings')]
+        if flagged:
+            console.print("\n[bold yellow]Review flags:[/bold yellow]")
+            for p in flagged:
+                console.print(f"  [yellow][!] {p['url']}: {'; '.join(p['warnings'])}[/yellow]")
     else:
         # Quiet mode - simple text summary
         extractor._log("info", "\n=== Summary ===")
