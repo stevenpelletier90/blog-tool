@@ -153,6 +153,205 @@ def test_detect_warnings_counts_tables(ex):
     assert ex.detect_content_warnings(to_blocks(ex, "<p>no tables</p>")) == []
 
 
+# --- Elementor (WordPress theme-builder) content extraction -------------
+
+ELEMENTOR_POST_BODY = (
+    "<p>In this topic, we will focus on how window tinting provides varying "
+    "degrees of privacy for vehicle occupants and contents inside.</p>"
+    "<h2>Understanding Privacy Levels</h2>"
+    '<p>Learn more in <a href="https://example.com/related-post/">our guide</a>.</p>'
+    '<img src="https://i0.wp.com/example.com/wp-content/uploads/2025/09/tint.jpeg" alt="Tinted car"/>'
+)
+
+ELEMENTOR_SINGLE_POST_PAGE = (
+    "<html><body>"
+    '<div data-elementor-type="single-post" class="elementor">'
+    '<h1 class="elementor-heading-title">Window Tint for Privacy</h1>'
+    '<div class="elementor-widget elementor-widget-theme-post-content">'
+    + ELEMENTOR_POST_BODY +
+    "</div></div>"
+    '<footer><div class="elementor-widget elementor-widget-text-editor">'
+    "<p>Automotive Elegance Address: 22R Dale St. Andover, Massachusetts 01810 "
+    "Hours: Monday through Friday nine to five, Saturday by appointment only.</p>"
+    "</div></footer>"
+    "</body></html>"
+)
+
+ELEMENTOR_WP_POST_PAGE = (
+    "<html><body>"
+    '<div data-elementor-type="wp-post" class="elementor">'
+    '<div class="elementor-widget elementor-widget-text-editor">'
+    + ELEMENTOR_POST_BODY +
+    "</div></div>"
+    "</body></html>"
+)
+
+
+def test_elementor_theme_post_content_extracted(ex):
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(ELEMENTOR_SINGLE_POST_PAGE, "html.parser")
+    content = ex.extract_content(soup)
+    assert "window tinting provides varying degrees of privacy" in content
+    assert 'class="wp-block-heading"' in content
+    # Post title and footer widgets live outside the post-content widget
+    assert "Window Tint for Privacy" not in content
+    assert "22R Dale St" not in content
+    assert ex._validate_gutenberg(content) == []
+
+
+def test_elementor_content_yields_images_and_links(ex):
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(ELEMENTOR_SINGLE_POST_PAGE, "html.parser")
+    content = ex.extract_content(soup)
+    images = ex.extract_images_from_content(content)
+    assert len(images) == 1
+    assert images[0]["src"].startswith("https://i0.wp.com/")
+    links = ex.extract_links(soup, "https://example.com/window-tint-for-privacy/")
+    assert any(link["url"] == "https://example.com/related-post/" for link in links)
+
+
+def test_elementor_built_post_body_extracted(ex):
+    # Classic theme where the post body itself is built with Elementor
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(ELEMENTOR_WP_POST_PAGE, "html.parser")
+    content = ex.extract_content(soup)
+    assert "window tinting provides varying degrees of privacy" in content
+    assert ex._validate_gutenberg(content) == []
+
+
+LAZY_PLACEHOLDER = (
+    "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'"
+    "%20viewBox='0%200%20800%20534'%3E%3C/svg%3E"
+)
+
+
+def test_lazy_load_placeholder_swapped_for_real_image(ex):
+    # WordPress lazy-load (Jetpack/Smush): src is an SVG placeholder, real
+    # URL lives in data-lazy-src. Static fetches must recover the real URL.
+    from bs4 import BeautifulSoup
+    page = (
+        '<html><body><div data-elementor-type="single-post">'
+        '<div class="elementor-widget-theme-post-content">'
+        "<p>Padding text so the content passes the one hundred character "
+        "minimum length check used by extract_content in the extractor.</p>"
+        f'<img src="{LAZY_PLACEHOLDER}" '
+        'data-lazy-src="https://i0.wp.com/example.com/wp-content/uploads/real.jpg?resize=800%2C534" '
+        'alt="Car"/>'
+        "</div></div></body></html>"
+    )
+    soup = BeautifulSoup(page, "html.parser")
+    content = ex.extract_content(soup)
+    assert "data:image/svg+xml" not in content
+    images = ex.extract_images_from_content(content)
+    assert len(images) == 1
+    assert images[0]["src"].startswith("https://i0.wp.com/example.com/")
+
+
+def test_lazy_load_srcset_only_uses_largest_candidate(ex):
+    from bs4 import BeautifulSoup
+    page = (
+        '<html><body><div data-elementor-type="single-post">'
+        '<div class="elementor-widget-theme-post-content">'
+        "<p>Padding text so the content passes the one hundred character "
+        "minimum length check used by extract_content in the extractor.</p>"
+        f'<img src="{LAZY_PLACEHOLDER}" '
+        'data-lazy-srcset="https://example.com/img-300.jpg 300w, '
+        'https://example.com/img-2560.jpg 2560w, '
+        'https://example.com/img-1024.jpg 1024w" alt="Car"/>'
+        "</div></div></body></html>"
+    )
+    soup = BeautifulSoup(page, "html.parser")
+    content = ex.extract_content(soup)
+    images = ex.extract_images_from_content(content)
+    assert len(images) == 1
+    assert images[0]["src"] == "https://example.com/img-2560.jpg"
+
+
+def test_elementor_full_page_post_extracted(ex):
+    # Service/landing posts built as full Elementor page designs
+    from bs4 import BeautifulSoup
+    page = (
+        '<html><body><div data-elementor-type="wp-page" class="elementor">'
+        '<div class="elementor-widget elementor-widget-text-editor">'
+        + ELEMENTOR_POST_BODY +
+        "</div></div></body></html>"
+    )
+    soup = BeautifulSoup(page, "html.parser")
+    content = ex.extract_content(soup)
+    assert "window tinting provides varying degrees of privacy" in content
+    assert ex._validate_gutenberg(content) == []
+
+
+# --- Featured image -> _thumbnail_id attachment --------------------------
+
+XML_NS = {
+    "content": "http://purl.org/rss/1.0/modules/content/",
+    "wp": "http://wordpress.org/export/1.2/",
+}
+
+
+def _make_post(**overrides):
+    post = {
+        "status": "success",
+        "url": "https://example.com/my-post/",
+        "title": "My Post",
+        "content": "<!-- wp:paragraph -->\n<p>Body</p>\n<!-- /wp:paragraph -->",
+        "content_length": 4,
+        "author": "admin",
+        "date": "2025-09-10T12:28:34+00:00",
+        "categories": [],
+        "tags": [],
+        "links": [],
+        "platform": "wordpress",
+        "images": [],
+        "warnings": [],
+    }
+    post.update(overrides)
+    return post
+
+
+def test_featured_image_extracted_from_og_meta(ex):
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(
+        '<html><head><meta property="og:image" '
+        'content="https://i0.wp.com/example.com/wp-content/uploads/hero.jpg?fit=1000%2C667"/>'
+        "</head><body></body></html>",
+        "html.parser",
+    )
+    assert ex.extract_featured_image(soup).startswith("https://i0.wp.com/")
+
+
+def test_featured_image_written_as_thumbnail_attachment(ex, tmp_path):
+    import xml.etree.ElementTree as ET
+    hero = "https://i0.wp.com/example.com/wp-content/uploads/hero.jpg?fit=1000%2C667"
+    ex.extracted_data.append(_make_post(featured_image=hero))
+    ex.save_to_xml("out.xml")
+    items = ET.parse(tmp_path / "out.xml").getroot().findall(".//item")
+    posts = [i for i in items if i.findtext("wp:post_type", "", XML_NS) == "post"]
+    atts = [i for i in items if i.findtext("wp:post_type", "", XML_NS) == "attachment"]
+    assert len(posts) == 1 and len(atts) == 1
+    thumb_id = None
+    for meta in posts[0].findall("wp:postmeta", XML_NS):
+        if meta.findtext("wp:meta_key", "", XML_NS) == "_thumbnail_id":
+            thumb_id = meta.findtext("wp:meta_value", "", XML_NS)
+    assert thumb_id, "post should carry a _thumbnail_id postmeta"
+    assert atts[0].findtext("wp:post_id", "", XML_NS) == thumb_id
+    assert atts[0].findtext("wp:attachment_url", "", XML_NS) == hero
+
+
+def test_featured_image_not_duplicated_when_also_in_content(ex, tmp_path):
+    import xml.etree.ElementTree as ET
+    hero = "https://example.com/wp-content/uploads/hero.jpg"
+    ex.extracted_data.append(_make_post(
+        featured_image=hero,
+        images=[{"src": hero, "alt": "", "width": "", "height": ""}],
+    ))
+    ex.save_to_xml("out.xml")
+    items = ET.parse(tmp_path / "out.xml").getroot().findall(".//item")
+    atts = [i for i in items if i.findtext("wp:post_type", "", XML_NS) == "attachment"]
+    assert len(atts) == 1
+
+
 # --- Cross-cutting: output is always well-formed & balanced -------------
 
 @pytest.mark.parametrize(

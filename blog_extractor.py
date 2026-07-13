@@ -22,7 +22,7 @@ import time
 import warnings
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, cast
 from urllib.parse import urljoin, urlparse
 
 if TYPE_CHECKING:
@@ -201,22 +201,21 @@ class BlogExtractor:
         """Generate blake2s hash of content for duplicate detection (FIPS-compliant)"""
         return hashlib.blake2s(content.encode('utf-8')).hexdigest()
 
-    def _quick_platform_check(self, url: str) -> Optional[str]:
+    def _quick_platform_check(self, url: str) -> Tuple[Optional[str], Optional[str]]:
         """Quick platform detection using basic requests (no Playwright) - FAST!
 
-        Returns platform name or None if detection fails.
-        This is used to determine if Playwright is needed before wasting time on heavy rendering.
+        Returns (platform, html) or (None, None) if detection fails.
+        The fetched html is reused by the static fast path so the page isn't
+        downloaded twice. A real User-Agent is required: WordPress firewalls
+        (Wordfence etc.) return 403 to UA-less requests, which used to force
+        every post through Playwright.
         """
         try:
-            # Quick HEAD request first to check accessibility
-            head_response = requests.head(url, timeout=5, allow_redirects=True)
-
-            # If HEAD fails, try GET but with minimal timeout
-            if head_response.status_code >= 400:
-                response = requests.get(url, timeout=10)
-            else:
-                response = requests.get(url, timeout=10)
-
+            response = requests.get(
+                url,
+                headers={'User-Agent': random.choice(self.user_agents)},
+                timeout=10
+            )
             response.raise_for_status()
             html = response.text
 
@@ -225,29 +224,29 @@ class BlogExtractor:
 
             # JavaScript-heavy platforms (NEED Playwright)
             if 'wix.com' in html_lower or 'data-hook=' in html or '_wix' in html_lower:
-                return 'wix'
+                return 'wix', html
             if 'webflow.com' in html_lower or 'data-wf-domain' in html or 'data-wf-page' in html:
-                return 'webflow'
+                return 'webflow', html
             if 'blog__article__content__text' in html or 'dealer-content' in html_lower:
                 # DealerOn/DealerInspire - Angular/JavaScript heavy
-                return 'dealeron'
+                return 'dealeron', html
 
             # Static platforms (DON'T need Playwright)
             if 'wp-content' in html_lower or 'wordpress' in html_lower or 'wp-includes' in html_lower:
-                return 'wordpress'
+                return 'wordpress', html
             if 'blogger.com' in html_lower or 'blogspot.com' in html_lower:
-                return 'blogger'
+                return 'blogger', html
             if 'medium.com' in html_lower:
-                return 'medium'
+                return 'medium', html
             if 'squarespace' in html_lower:
-                return 'squarespace'
+                return 'squarespace', html
 
             # Generic/unknown - assume static (most sites are)
-            return 'generic'
+            return 'generic', html
 
         except Exception as e:
             self._log("debug", f"  Quick platform check failed: {e}")
-            return None
+            return None, None
 
     def _needs_javascript_rendering(self, platform: Optional[str]) -> bool:
         """Determine if a platform needs JavaScript rendering (Playwright)
@@ -327,7 +326,7 @@ class BlogExtractor:
         """
         # STEP 1: Quick platform detection (5-10 seconds) to determine method
         self._log("info", "  Detecting platform type...")
-        platform = self._quick_platform_check(url)
+        platform, quick_html = self._quick_platform_check(url)
         needs_js = self._needs_javascript_rendering(platform)
 
         if platform:
@@ -338,6 +337,9 @@ class BlogExtractor:
 
         # STEP 2: If static site, skip Playwright entirely and use requests
         if not needs_js:
+            # Reuse the page already fetched during platform detection
+            if quick_html:
+                return quick_html
             self._log("info", "  Fetching with requests library (fast path)...")
             for attempt in range(max_retries):
                 try:
@@ -492,7 +494,7 @@ class BlogExtractor:
         # NORMAL MODE: Smart platform detection (if not in fast mode)
         # STEP 1: Quick platform detection to determine method
         self._log("info", "  Detecting platform type...")
-        platform = self._quick_platform_check(url)  # Still uses sync requests (fast)
+        platform, quick_html = self._quick_platform_check(url)  # Still uses sync requests (fast)
         needs_js = self._needs_javascript_rendering(platform)
 
         if platform:
@@ -503,6 +505,9 @@ class BlogExtractor:
 
         # STEP 2: If static site, skip Playwright and use async HTTP
         if not needs_js:
+            # Reuse the page already fetched during platform detection
+            if quick_html:
+                return quick_html
             self._log("info", "  Fetching with aiohttp (fast async path)...")
             for attempt in range(max_retries):
                 try:
@@ -762,6 +767,43 @@ class BlogExtractor:
                     return title
         return "Untitled Post"
 
+    def _fix_lazy_images(self, content_elem: Tag) -> None:
+        """Swap lazy-load placeholder srcs for the real image URL.
+
+        Static fetches (requests fast path) see WordPress lazy-load markup
+        (Jetpack, Smush, etc.) where src is a data: SVG placeholder and the
+        real URL lives in data-lazy-src / data-src / a srcset variant.
+        """
+        for img in content_elem.find_all('img'):
+            if not isinstance(img, Tag):
+                continue
+            src = str(img.get('src') or '')
+            if src and not src.startswith('data:'):
+                continue
+
+            real_src = img.get('data-lazy-src') or img.get('data-src')
+            if not real_src:
+                srcset = (img.get('data-lazy-srcset') or img.get('data-srcset')
+                          or img.get('srcset'))
+                if srcset:
+                    # Pick the largest width candidate ("url 300w, url2 2560w")
+                    best_width = -1
+                    for candidate in str(srcset).split(','):
+                        parts = candidate.strip().split()
+                        if not parts:
+                            continue
+                        width = 0
+                        if len(parts) > 1 and parts[1].endswith('w'):
+                            try:
+                                width = int(parts[1][:-1])
+                            except ValueError:
+                                width = 0
+                        if width > best_width:
+                            best_width = width
+                            real_src = parts[0]
+            if real_src:
+                img['src'] = str(real_src)
+
     def extract_content(self, soup: BeautifulSoup) -> str:
         """Extract main post content with HTML structure preserved"""
         selectors = [
@@ -782,6 +824,12 @@ class BlogExtractor:
             'div.entry',
             # WordPress dealer blogs (Earnhardt, etc.) - actual blog content
             'div.blogContent',
+            # Elementor theme-builder "Post Content" widget (wraps the_content only)
+            'div.elementor-widget-theme-post-content',
+            # Elementor-built post body embedded in a classic theme
+            'div[data-elementor-type="wp-post"]',
+            # Elementor full-page designs served as posts (service/landing posts)
+            'div[data-elementor-type="wp-page"]',
             # WordPress and generic
             'article .entry-content',
             'article',
@@ -796,6 +844,9 @@ class BlogExtractor:
                 # Clean up unwanted elements (breadcrumbs, navigation, title duplication)
                 for unwanted in content_elem.find_all(['script', 'style', 'noscript']):
                     unwanted.decompose()
+
+                # Recover real image URLs from lazy-load placeholders
+                self._fix_lazy_images(content_elem)
 
                 # Remove breadcrumbs (common in custom HTML sites)
                 for breadcrumb in content_elem.find_all(class_='breadcrumbs'):
@@ -1505,6 +1556,30 @@ class BlogExtractor:
 
         return datetime.now().strftime('%Y-%m-%d')
 
+    def extract_featured_image(self, soup: BeautifulSoup) -> str:
+        """Extract the post's featured/hero image URL.
+
+        Featured images usually render outside the post content area (theme
+        header, og:image meta), so extract_content() never sees them; without
+        this, posts whose only image is the hero export with no image at all.
+        """
+        og_image = soup.find('meta', attrs={'property': 'og:image'})
+        if og_image and isinstance(og_image, Tag):
+            content_attr = og_image.get('content')
+            if content_attr:
+                url = str(content_attr).strip()
+                if url.startswith(('http://', 'https://')):
+                    return url
+
+        # WordPress standard featured-image class (theme-rendered hero)
+        img = soup.select_one('img.wp-post-image')
+        if img and isinstance(img, Tag):
+            src = img.get('data-lazy-src') or img.get('data-src') or img.get('src')
+            if src and str(src).startswith(('http://', 'https://')):
+                return str(src)
+
+        return ""
+
     def extract_images_from_content(self, content: str) -> List[Dict[str, str]]:
         """Extract image URLs and attributes from Gutenberg content
 
@@ -1546,6 +1621,12 @@ class BlogExtractor:
             'section[data-hook="post-description"]',
             # DealerInspire - actual blog content only (excludes author/social/category links)
             'div.entry',
+            # Elementor theme-builder "Post Content" widget (wraps the_content only)
+            'div.elementor-widget-theme-post-content',
+            # Elementor-built post body embedded in a classic theme
+            'div[data-elementor-type="wp-post"]',
+            # Elementor full-page designs served as posts (service/landing posts)
+            'div[data-elementor-type="wp-page"]',
             # WordPress and generic
             'article .entry-content',
             'article',
@@ -1660,6 +1741,7 @@ class BlogExtractor:
 
         # Extract image URLs from content for WordPress attachments
         images = self.extract_images_from_content(content) if self.include_images else []
+        featured_image = self.extract_featured_image(soup) if self.include_images else ""
 
         # Content review flags (tables preserved, any malformed blocks)
         content_warnings = self.detect_content_warnings(content)
@@ -1679,6 +1761,7 @@ class BlogExtractor:
             'links': links,
             'platform': platform,
             'images': images,  # Add images for WordPress attachment items
+            'featured_image': featured_image,  # Becomes _thumbnail_id attachment
             'warnings': content_warnings,  # Review flags surfaced in CLI/UI
         }
 
@@ -1738,6 +1821,7 @@ class BlogExtractor:
 
         # Extract image URLs from content for WordPress attachments
         images = self.extract_images_from_content(content) if self.include_images else []
+        featured_image = self.extract_featured_image(soup) if self.include_images else ""
 
         # Download images asynchronously if enabled
         if self.download_images and images:
@@ -1762,6 +1846,7 @@ class BlogExtractor:
             'links': links,
             'platform': platform,
             'images': images,  # Add images for WordPress attachment items
+            'featured_image': featured_image,  # Becomes _thumbnail_id attachment
             'warnings': content_warnings,  # Review flags surfaced in CLI/UI
         }
 
@@ -2378,12 +2463,29 @@ class BlogExtractor:
             f.write('<category domain="post_tag" nicename="{}"><![CDATA[{}]]></category>\n'.format(
                 normalized_tag.lower().replace(' ', '-'), normalized_tag))
 
+        # Featured image: reference its attachment via _thumbnail_id postmeta
+        # (must match the attachment ID computed in _write_xml_attachment)
+        featured_src = post.get('featured_image') or ''
+        if featured_src:
+            if featured_src.startswith(('http://', 'https://')):
+                featured_src = self._resolve_image_url(featured_src)
+            thumbnail_id = abs(hash(featured_src) % 1000000) + 1000000
+            f.write('<wp:postmeta>\n')
+            f.write('<wp:meta_key><![CDATA[_thumbnail_id]]></wp:meta_key>\n')
+            f.write(f'<wp:meta_value><![CDATA[{thumbnail_id}]]></wp:meta_value>\n')
+            f.write('</wp:postmeta>\n')
+
         f.write('</item>\n')
 
-        # Write attachment items for each image in the post
-        if 'images' in post and post['images']:
-            for idx, image in enumerate(post['images']):
-                self._write_xml_attachment(f, image, idx, post_id, date_formats, author)
+        # Write attachment items for each image in the post,
+        # plus the featured image when it isn't already in the content
+        images = list(post['images']) if post.get('images') else []
+        featured_raw = post.get('featured_image') or ''
+        if featured_raw and featured_raw not in {img['src'] for img in images}:
+            images.append({'src': featured_raw, 'alt': post.get('title', ''),
+                           'width': '', 'height': ''})
+        for idx, image in enumerate(images):
+            self._write_xml_attachment(f, image, idx, post_id, date_formats, author)
 
     def _write_xml_attachment(self, f: Any, image: Dict[str, str], post_id: int, parent_post_id: int, date_formats: dict, author: str) -> None:
         """Write single attachment item to WordPress XML"""
