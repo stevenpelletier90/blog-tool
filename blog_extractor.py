@@ -119,6 +119,10 @@ class BlogExtractor:
         self.download_images = download_images  # Download images locally instead of using external URLs
         self.skip_playwright = skip_playwright  # Fast mode - skip Playwright for WordPress/static sites
         self.seen_hashes: Set[str] = set()  # For duplicate detection
+        # XML export ID bookkeeping (reset per export via _reset_xml_ids)
+        self._xml_used_ids: Set[int] = set()  # every wp:post_id emitted this export
+        self._xml_attachment_ids: Dict[str, int] = {}  # resolved image URL -> attachment ID
+        self._xml_written_attachments: Set[str] = set()  # image URLs already emitted as items
         self.resolved_image_cache: Dict[str, str] = {}  # Cache for resolved image URLs
         self.downloaded_images: Dict[str, str] = {}  # Map original URL -> local file path
         # Shared Playwright browser for async concurrent mode (reduces overhead)
@@ -2401,6 +2405,35 @@ class BlogExtractor:
         # line breaks in long href attributes, which can cause WordPress to truncate URLs
         return soup.decode(formatter="minimal")
 
+    def _reset_xml_ids(self) -> None:
+        """Reset per-export ID bookkeeping so repeated exports start clean"""
+        self._xml_used_ids.clear()
+        self._xml_attachment_ids.clear()
+        self._xml_written_attachments.clear()
+
+    def _claim_xml_id(self, base: int) -> int:
+        """Return base bumped past any wp:post_id already used in this export.
+
+        Importers key items by wp:post_id, so a duplicate ID anywhere in the
+        file makes the whole import fail ("An item with the same key has
+        already been added").
+        """
+        while base in self._xml_used_ids:
+            base += 1
+        self._xml_used_ids.add(base)
+        return base
+
+    def _attachment_xml_id(self, image_src: str) -> int:
+        """Assign (once per export) the wp:post_id for an image's attachment item.
+
+        The same image reused across posts must map to a single attachment ID
+        so _thumbnail_id references stay valid and no duplicate IDs are emitted.
+        """
+        if image_src not in self._xml_attachment_ids:
+            base = abs(hash(image_src) % 1000000) + 1000000  # offset above post IDs
+            self._xml_attachment_ids[image_src] = self._claim_xml_id(base)
+        return self._xml_attachment_ids[image_src]
+
     def _write_xml_post(self, f: Any, post: Dict[str, Any]) -> None:
         """Write single post to WordPress XML"""
         # Normalize unicode characters in all text fields
@@ -2415,7 +2448,7 @@ class BlogExtractor:
         date_formats = self.parse_and_format_date(post["date"])
 
         # Generate unique positive post ID
-        post_id = abs(hash(post["url"]) % 1000000) + 1
+        post_id = self._claim_xml_id(abs(hash(post["url"]) % 1000000) + 1)
 
         f.write('<item>\n')
         f.write(f'<title><![CDATA[{title}]]></title>\n')
@@ -2464,12 +2497,12 @@ class BlogExtractor:
                 normalized_tag.lower().replace(' ', '-'), normalized_tag))
 
         # Featured image: reference its attachment via _thumbnail_id postmeta
-        # (must match the attachment ID computed in _write_xml_attachment)
+        # (same helper as _write_xml_attachment, so the IDs always match)
         featured_src = post.get('featured_image') or ''
         if featured_src:
             if featured_src.startswith(('http://', 'https://')):
                 featured_src = self._resolve_image_url(featured_src)
-            thumbnail_id = abs(hash(featured_src) % 1000000) + 1000000
+            thumbnail_id = self._attachment_xml_id(featured_src)
             f.write('<wp:postmeta>\n')
             f.write('<wp:meta_key><![CDATA[_thumbnail_id]]></wp:meta_key>\n')
             f.write(f'<wp:meta_value><![CDATA[{thumbnail_id}]]></wp:meta_value>\n')
@@ -2501,8 +2534,12 @@ class BlogExtractor:
                 self._download_image(image_src)
                 # Note: We download but still use image_src (HTTPS URL) in XML
 
-        # Generate unique attachment ID
-        attachment_id = abs(hash(image_src) % 1000000) + 1000000  # Offset to avoid collision with posts
+        # One attachment item per unique image URL: reused images keep the same
+        # ID (so every post's _thumbnail_id resolves) but are only emitted once
+        attachment_id = self._attachment_xml_id(image_src)
+        if image_src in self._xml_written_attachments:
+            return
+        self._xml_written_attachments.add(image_src)
 
         # Extract filename from URL for title
         from urllib.parse import urlparse, parse_qs
@@ -2564,6 +2601,7 @@ class BlogExtractor:
         """Save extracted data to WordPress XML format"""
         output_path = os.path.join(self.output_dir, filename)
 
+        self._reset_xml_ids()
         with open(output_path, 'w', encoding='utf-8') as f:
             self._write_xml_header(f)
 
@@ -2660,6 +2698,7 @@ class BlogExtractor:
     def get_xml_content(self) -> str:
         """Generate and return WordPress XML content as string"""
         output = io.StringIO()
+        self._reset_xml_ids()
         self._write_xml_header(output)
 
         for post in self.extracted_data:

@@ -352,6 +352,34 @@ def test_featured_image_not_duplicated_when_also_in_content(ex, tmp_path):
     assert len(atts) == 1
 
 
+def test_shared_image_across_posts_has_no_duplicate_post_ids(ex, tmp_path):
+    # An image reused by several posts (common on Elementor sites) must not
+    # emit attachment items sharing one wp:post_id — importers that key items
+    # by ID reject the file ("An item with the same key has already been added")
+    import xml.etree.ElementTree as ET
+    shared = "https://example.com/wp-content/uploads/shared.jpg"
+    for slug in ("post-one", "post-two", "post-three"):
+        ex.extracted_data.append(_make_post(
+            url=f"https://example.com/{slug}/",
+            featured_image=shared,
+            images=[{"src": shared, "alt": "", "width": "", "height": ""}],
+        ))
+    ex.save_to_xml("out.xml")
+    items = ET.parse(tmp_path / "out.xml").getroot().findall(".//item")
+    ids = [i.findtext("wp:post_id", "", XML_NS) for i in items]
+    assert len(ids) == len(set(ids)), f"duplicate wp:post_id values: {sorted(ids)}"
+    atts = [i for i in items if i.findtext("wp:post_type", "", XML_NS) == "attachment"]
+    assert len(atts) == 1
+    att_id = atts[0].findtext("wp:post_id", "", XML_NS)
+    posts = [i for i in items if i.findtext("wp:post_type", "", XML_NS) == "post"]
+    assert len(posts) == 3
+    for p in posts:
+        thumbs = [m.findtext("wp:meta_value", "", XML_NS)
+                  for m in p.findall("wp:postmeta", XML_NS)
+                  if m.findtext("wp:meta_key", "", XML_NS) == "_thumbnail_id"]
+        assert thumbs == [att_id]
+
+
 # --- Cross-cutting: output is always well-formed & balanced -------------
 
 @pytest.mark.parametrize(
