@@ -380,6 +380,79 @@ def test_shared_image_across_posts_has_no_duplicate_post_ids(ex, tmp_path):
         assert thumbs == [att_id]
 
 
+# --- Widget markup: buttons, FAQs, cards, pull quotes must keep structure ---
+
+def test_button_element_with_onclick_becomes_button_block(ex):
+    out = to_blocks(ex, '<p>Ready?</p><button onclick="location.href=\'/contact\'">Get a Quote</button>')
+    assert "<!-- wp:html -->" in out
+    assert 'class="btn btn-cta"' in out
+    assert 'href="/contact"' in out
+    assert "<p>Get a Quote</p>" not in out
+
+
+def test_details_summary_faq_becomes_heading_and_paragraph(ex):
+    raw = ('<details class="e-n-accordion-item"><summary>Does PPF damage paint?</summary>'
+           "<p>No, it protects it.</p></details>"
+           "<details><summary>How long does it last?</summary><p>5-10 years.</p></details>")
+    out = to_blocks(ex, raw)
+    assert out.count("<!-- wp:heading") == 2
+    assert "Does PPF damage paint?" in out and "How long does it last?" in out
+    assert "<p>No, it protects it.</p>" in out and "<p>5-10 years.</p>" in out
+    assert "<details" not in out and "<summary" not in out
+
+
+def test_elementor_accordion_becomes_headings_and_paragraphs(ex):
+    raw = ('<div class="elementor-accordion">'
+           '<div class="elementor-accordion-item"><div class="elementor-tab-title">Q1?</div>'
+           '<div class="elementor-tab-content">Answer one.</div></div>'
+           '<div class="elementor-accordion-item"><div class="elementor-tab-title">Q2?</div>'
+           '<div class="elementor-tab-content">Answer two.</div></div></div>')
+    out = to_blocks(ex, raw)
+    assert out.count("<!-- wp:heading") == 2
+    assert "<p>Answer one.</p>" in out and "<p>Answer two.</p>" in out
+    assert "Q1? Answer one." not in out
+
+
+def test_card_grid_divs_do_not_merge_into_one_paragraph(ex):
+    raw = ('<div class="row"><div class="card"><div class="card-title">Gold Package</div>'
+           '<div class="card-body">Full front coverage</div></div>'
+           '<div class="card"><div class="card-title">Silver Package</div>'
+           '<div class="card-body">Partial coverage</div></div></div>')
+    out = to_blocks(ex, raw)
+    assert "Gold Package Full front coverage" not in out
+    assert out.count("<!-- wp:heading") == 2  # card titles become headings
+    assert "<p>Full front coverage</p>" in out and "<p>Partial coverage</p>" in out
+
+
+def test_sibling_text_divs_become_separate_paragraphs(ex):
+    out = to_blocks(ex, "<div>First block of text.</div><div>Second block of text.</div>")
+    assert out.count("<!-- wp:paragraph -->") == 2
+    assert "First block of text. Second block of text." not in out
+
+
+def test_pull_quote_div_becomes_quote_block(ex):
+    raw = ('<div class="quote-wrapper"><div class="pull-quote">Best shop in town!</div>'
+           '<div class="quote-author">John D.</div></div>')
+    out = to_blocks(ex, raw)
+    assert "<!-- wp:quote -->" in out
+    assert "Best shop in town!" in out
+    assert "Best shop in town! John D." not in out
+
+
+def test_div_inside_table_cell_keeps_native_table(ex):
+    out = to_blocks(ex, "<table><tbody><tr><td><div>cell text</div></td><td>plain</td></tr></tbody></table>")
+    assert "<!-- wp:table -->" in out
+    assert "<td>cell text </td>" in out or "<td>cell text</td>" in out
+
+
+def test_button_wrapper_div_leaves_no_empty_paragraph(ex):
+    raw = ('<div class="elementor-button-wrapper">'
+           '<a class="elementor-button" href="/quote"><span class="elementor-button-text">Go</span></a></div>')
+    out = to_blocks(ex, raw)
+    assert "<!-- wp:html -->" in out and 'href="/quote"' in out
+    assert "<p></p>" not in out and "<p> </p>" not in out
+
+
 # --- Cross-cutting: output is always well-formed & balanced -------------
 
 @pytest.mark.parametrize(

@@ -904,6 +904,65 @@ class BlogExtractor:
 
         return ""
 
+    @staticmethod
+    def _has_class_token(tag: Tag, tokens: Set[str]) -> bool:
+        """True if any of the tag's CSS classes is exactly one of tokens"""
+        classes = tag.get('class')
+        if not classes or not isinstance(classes, list):
+            return False
+        return any(cls in tokens for cls in classes)
+
+    def _normalize_widget_markup(self, soup: BeautifulSoup) -> None:
+        """Rewrite common widget markup into semantic HTML the pipeline preserves.
+
+        Runs before the div-unwrap/whitelist passes strip class information —
+        without this, buttons, FAQ accordions, cards, and div-based pull quotes
+        collapse into plain paragraphs.
+        """
+        # <button> that navigates: rewrite as a link so the CTA button path applies
+        for btn in soup.find_all('button'):
+            if not isinstance(btn, Tag):
+                continue
+            text = btn.get_text(strip=True)
+            href = str(btn.get('data-href') or btn.get('formaction') or '')
+            if not href:
+                onclick = str(btn.get('onclick') or '')
+                match = re.search(
+                    r"""(?:location\.href|window\.location(?:\.href)?|window\.open)\s*[=(]\s*['"]([^'"]+)""",
+                    onclick)
+                if match:
+                    href = match.group(1)
+            if text and href:
+                # attrs= so the builder normalizes class into a list, which the
+                # button-marking pass requires
+                link = soup.new_tag('a', href=href, attrs={'class': 'btn'})
+                link.string = text
+                btn.replace_with(link)
+
+        # <details>/<summary> FAQs (native HTML and Elementor nested accordions):
+        # question becomes a heading, answer content stays as its own blocks
+        for summary in soup.find_all('summary'):
+            if isinstance(summary, Tag):
+                summary.name = 'h3'
+        for details in soup.find_all('details'):
+            if isinstance(details, Tag):
+                details.name = 'div'  # unwrapped later, children survive
+
+        # Classic Elementor accordion/toggle titles and card titles: headings
+        title_tokens = {'elementor-tab-title', 'accordion-title', 'card-title', 'card-header'}
+        for el in soup.find_all(['div', 'span']):
+            if isinstance(el, Tag) and self._has_class_token(el, title_tokens) and el.get_text(strip=True):
+                el.name = 'h3'
+
+        # Pull quotes built from divs: exact-token match only, so CTA sections
+        # like "request-quote" never get swallowed into a quote block
+        quote_tokens = {'quote', 'pullquote', 'pull-quote', 'blockquote',
+                        'wp-block-pullquote', 'elementor-blockquote'}
+        for el in soup.find_all('div'):
+            if (isinstance(el, Tag) and self._has_class_token(el, quote_tokens)
+                    and el.get_text(strip=True) and el.find_parent('blockquote') is None):
+                el.name = 'blockquote'
+
     def clean_html(self, html_content: str) -> str:
         """Clean HTML by removing unwanted attributes and elements while preserving structure"""
         # STEP 1: Fix character encoding issues
@@ -946,6 +1005,10 @@ class BlogExtractor:
         from bs4 import Comment
         for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
             comment.extract()
+
+        # Rewrite widget markup (FAQs, buttons, pull quotes, card titles) into
+        # semantic HTML while class info still exists — before divs are unwrapped
+        self._normalize_widget_markup(soup)
 
         # Mark button links with a special attribute before processing
         for link in soup.find_all('a', class_=True):
@@ -1041,9 +1104,22 @@ class BlogExtractor:
         # Remove unwanted elements but keep their content
         # Add spaces when unwrapping to prevent text concatenation
         unwrap_tags = ['div', 'span', 'section', 'article', 'header', 'footer', 'nav']
+        # A div/section holding only text/inline content is a text block: keep it
+        # as a paragraph, otherwise sibling widgets (cards, accordion panels)
+        # merge into one <p> when their wrappers unwrap
+        block_markers = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol',
+                         'table', 'blockquote', 'pre', 'figure', 'dl', 'hr',
+                         'div', 'section', 'article']
         for tag_name in unwrap_tags:
             for tag in soup.find_all(tag_name):
                 if isinstance(tag, Tag):
+                    if (tag_name in ('div', 'section', 'article')
+                            and tag.get_text(strip=True)
+                            and tag.find(block_markers) is None
+                            and tag.find_parent(['td', 'th', 'li']) is None):
+                        tag.attrs = {}
+                        tag.name = 'p'
+                        continue
                     # Add space after the tag before unwrapping to prevent text merging
                     # Only if the tag has content and isn't just whitespace
                     if tag.get_text(strip=True):
@@ -1196,6 +1272,9 @@ class BlogExtractor:
                             button.extract()
                             # Insert button as sibling after the paragraph
                             p.insert_after(button)
+                    # A paragraph that only held the button is now empty noise
+                    if not p.get_text(strip=True) and p.find('img') is None:
+                        p.decompose()
 
         gutenberg_blocks = []
 
