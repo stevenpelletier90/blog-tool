@@ -63,13 +63,17 @@ urls.txt
 nul
 
 # Claude Code — shared config is tracked (settings.json, agents/); local state is not.
-# Verified 2026-07-16: settings.local.json (personal overrides) and
-# scheduled_tasks.lock (runtime lock: sessionId/pid) are the only local artifacts
-# Claude Code actually writes into a project's .claude/. Session todos live in
-# ~/.claude/projects/<path>/<session-id>/, NOT here — a `.claude/todos/` rule was
-# ignoring a path that has never existed in any of these repos.
+# Verified 2026-07-16 against real artifacts, not a template:
+#   settings.local.json  — personal overrides
+#   scheduled_tasks.lock — runtime lock (sessionId/pid)
+#   worktrees/           — where EnterWorktree puts isolated worktrees. Untracked
+#                          without this, so a stray `git add -A` could commit a
+#                          whole worktree. Verified: it was NOT ignored before.
+# Session todos are NOT here — they live in ~/.claude/projects/<path>/<session-id>/.
+# A `.claude/todos/` rule was ignoring a path that has never existed in any repo.
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
+.claude/worktrees/
 
 # Playwright
 test-results/
