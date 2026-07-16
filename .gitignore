@@ -62,11 +62,14 @@ urls.txt
 *.temp
 nul
 
-# Claude Code — shared config is tracked, personal config is local-only.
-# Shared & tracked: settings.json (wires the PostToolUse format hook, so a fresh
-# clone gets it). Excluded from the distribution zip via create_distribution.py.
+# Claude Code — shared config is tracked (settings.json, agents/); local state is not.
+# Verified 2026-07-16: settings.local.json (personal overrides) and
+# scheduled_tasks.lock (runtime lock: sessionId/pid) are the only local artifacts
+# Claude Code actually writes into a project's .claude/. Session todos live in
+# ~/.claude/projects/<path>/<session-id>/, NOT here — a `.claude/todos/` rule was
+# ignoring a path that has never existed in any of these repos.
 .claude/settings.local.json
-.claude/todos/
+.claude/scheduled_tasks.lock
 
 # Playwright
 test-results/
