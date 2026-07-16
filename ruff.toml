@@ -1,0 +1,16 @@
+# Ruff configuration.
+#
+# Deliberately minimal: no rule selection, no style overrides. Ruff's defaults
+# (lint E4/E7/E9 + F, format ~Black) are what `ruff check .` has always applied
+# here, and pinning a rule set now would retroactively fail existing code.
+# This file exists for exclusion semantics only.
+#
+# force-exclude is the point. Ruff skips `blog-extractor-env/` during directory
+# discovery (it honors .gitignore), but a path passed EXPLICITLY on the command
+# line bypasses exclusions unless force-exclude is on. The PostToolUse formatter
+# hook always passes explicit paths, so without this it would happily reformat
+# the virtualenv's own site-packages. Verified: `ruff format` rewrote a probe
+# file under blog-extractor-env/ until this landed.
+
+extend-exclude = ["blog-extractor-env"]
+force-exclude = true

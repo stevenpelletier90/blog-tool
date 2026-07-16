@@ -223,7 +223,7 @@ For detailed architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Testing & Quality
 
 ```bash
-# Linting
+# Linting (the gate — ruff config lives in ruff.toml)
 ruff check .
 
 # Type checking
@@ -234,6 +234,24 @@ pytest tests/
 ```
 
 Install dev tools: `pip install -r requirements-dev.txt`
+
+There are no git hooks — nothing gates a commit. Run the checks above yourself.
+
+**One Claude Code hook runs:** a PostToolUse formatter (`scripts/claude-format-hook.js`,
+wired in `.claude/settings.json`) that runs `ruff check --fix` on `.py` files Claude
+edits, using the venv's pinned ruff (`blog-extractor-env/`). Files Claude edits never
+pass through an editor, so nothing else tidies them. It always exits 0 and never blocks.
+
+**It deliberately does NOT run `ruff format`.** This repo has never adopted the
+formatter: `ruff check .` passes clean while `ruff format` would rewrite ~1995 of
+blog_extractor.py's 2917 lines. Running it in the hook would bury every one-line edit
+under a mass reformat and apply a standard the gate never checks. If you want ruff's
+formatter, adopt it as its own deliberate `ruff format .` commit first, then add it to
+the hook — not the other way round.
+
+**Adding a dev-only file? Add it to `EXCLUDE_PATTERNS` in `create_distribution.py`.**
+That script uses a blocklist, so anything not listed ships to end users in the zip.
+`ruff.toml` and `scripts/` are excluded there for exactly this reason.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full developer setup.
 

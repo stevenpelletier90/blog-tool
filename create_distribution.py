@@ -41,6 +41,8 @@ EXCLUDE_PATTERNS = [
     'QUICKSTART.md',       # Redundant with simplified README
     'USER_GUIDE.md',       # Will consolidate into README
     'mypy.ini',            # Developer tool config
+    'ruff.toml',           # Developer tool config
+    'scripts/',            # Developer tooling (Claude Code format hook)
     'requirements-dev.txt',  # Developer dependencies
 ]
 
