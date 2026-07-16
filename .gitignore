@@ -62,8 +62,11 @@ urls.txt
 *.temp
 nul
 
-# Claude settings (keep local only)
-.claude/
+# Claude Code — shared config is tracked, personal config is local-only.
+# Shared & tracked: settings.json (wires the PostToolUse format hook, so a fresh
+# clone gets it). Excluded from the distribution zip via create_distribution.py.
+.claude/settings.local.json
+.claude/todos/
 
 # Playwright
 test-results/
