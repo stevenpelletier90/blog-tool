@@ -65,7 +65,7 @@ Then:
 
 **Step 1:** Create a file called `urls.txt` with your blog URLs (one per line):
 
-```bash
+```text
 https://example.com/blog/post-1
 https://example.com/blog/post-2
 https://example.com/blog/post-3
@@ -129,13 +129,13 @@ Once you have the XML file (`blog_posts.xml`):
 
 ## What Gets Extracted
 
-✅ Blog post titles
-✅ Full content (text, images, formatting)
-✅ Author names
-✅ Publication dates
-✅ Categories and tags
-✅ All links (internal and external)
-✅ Images (WordPress downloads them automatically)
+- ✅ Blog post titles
+- ✅ Full content (text, images, formatting)
+- ✅ Author names
+- ✅ Publication dates
+- ✅ Categories and tags
+- ✅ All links (internal and external)
+- ✅ Images (WordPress downloads them automatically)
 
 ---
 
@@ -185,24 +185,27 @@ All files are saved to the `output/` folder:
 
 ---
 
-## Need Help?
+## Frequently Asked Questions
 
-**Common Questions:**
+### Do I need to keep the virtual environment folder?
 
-**Q: Do I need to keep the virtual environment folder?**
-A: Yes! The `blog-extractor-env` folder contains all the installed libraries. Don't delete it.
+Yes. The `blog-extractor-env` folder contains all the installed libraries — don't delete it.
 
-**Q: Can I move this folder?**
-A: Yes! Just move the entire folder. Everything will still work.
+### Can I move this folder?
 
-**Q: How do I extract more blog posts later?**
-A: Just add new URLs to `urls.txt` and run the extractor again. Or use the web interface.
+Yes. Move the entire folder and everything will still work.
 
-**Q: What if I have 1000+ blog posts?**
-A: Use the command line with `--concurrent 5` option. It can handle thousands of URLs.
+### How do I extract more blog posts later?
 
-**Q: Can I extract from password-protected blogs?**
-A: No, the blog posts must be publicly accessible.
+Add new URLs to `urls.txt` and run the extractor again, or use the web interface.
+
+### What if I have 1000+ blog posts?
+
+Use the command line with the `--concurrent 5` option. It can handle thousands of URLs.
+
+### Can I extract from password-protected blogs?
+
+No, the blog posts must be publicly accessible.
 
 ---
 
@@ -236,7 +239,7 @@ You are free to use, modify, and distribute this software for any purpose, inclu
 
 ## Quick Reference Card
 
-```bash
+```text
 INSTALLATION (one time):
   Windows:    Double-click setup.bat
   Mac/Linux:  bash setup.sh
