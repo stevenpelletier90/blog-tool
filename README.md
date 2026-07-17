@@ -129,13 +129,13 @@ Once you have the XML file (`blog_posts.xml`):
 
 ## What Gets Extracted
 
-- ✅ Blog post titles
-- ✅ Full content (text, images, formatting)
-- ✅ Author names
-- ✅ Publication dates
-- ✅ Categories and tags
-- ✅ All links (internal and external)
-- ✅ Images (WordPress downloads them automatically)
+- Blog post titles
+- Full content (text, images, formatting)
+- Author names
+- Publication dates
+- Categories and tags
+- All links (internal and external)
+- Images (WordPress downloads them automatically)
 
 ---
 
@@ -143,8 +143,9 @@ Once you have the XML file (`blog_posts.xml`):
 
 ### "Python is not installed"
 
-Download and install Python 3.8 or newer from [python.org/downloads](https://www.python.org/downloads/)
-**Important:** Check "Add Python to PATH" during installation
+Download and install Python 3.8 or newer from [python.org/downloads](https://www.python.org/downloads/).
+
+**Important:** Check "Add Python to PATH" during installation.
 
 ### "Command not found" or "File not found"
 
