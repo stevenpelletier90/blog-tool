@@ -5,6 +5,32 @@ All notable changes to the Blog Post Extractor & WordPress Migration Tool will b
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Elementor Support**: Extract from Elementor-built WordPress sites, including featured images
+- **Table Preservation**: HTML tables survive extraction and export as proper Gutenberg table blocks
+- **Structured Block Preservation**: Buttons, FAQs, cards, and pull quotes export as structured blocks instead of flattened paragraphs
+- **Content Review Flags**: CLI and Streamlit UI surface posts that may need manual review after extraction
+- **Content-Transform Test Suite**: pytest coverage for tables, Gutenberg blocks, and WordPress XML validity
+- **Faster WordPress Fast Path**: Quicker extraction for standard WordPress sites via the requests library
+
+### Fixed
+
+- Duplicate `wp:post_id` values in exported XML (IDs are now guaranteed unique)
+- `<p>` tags no longer injected inside table cells (malformation guard)
+- Content fidelity issues in WordPress export
+
+### Changed
+
+- Dependency floors bumped to current releases
+- Documentation updated: README notes the developer docs (CLAUDE.md, ARCHITECTURE.md, CONTRIBUTING.md) and the project creation date (September 26, 2025)
+
+### Developer
+
+- ruff lint config (`ruff.toml`) and a Claude Code PostToolUse formatter hook
+
 ## [1.0.0] - 2025-11-19
 
 ### Added
