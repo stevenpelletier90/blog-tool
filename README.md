@@ -206,9 +206,21 @@ A: No, the blog posts must be publicly accessible.
 
 ---
 
+## For Developers
+
+The GitHub repository includes developer documentation not shipped in the distribution zip:
+
+- **CLAUDE.md** - Guidance for Claude Code (AI assistant) when working on this codebase
+- **ARCHITECTURE.md** - Technical architecture details
+- **CONTRIBUTING.md** - Developer setup and contribution guide
+
+---
+
 ## Version
 
 Current version: **1.0.0**
+
+Initially created: September 26, 2025
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
 
