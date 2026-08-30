@@ -463,3 +463,54 @@ def test_button_wrapper_div_leaves_no_empty_paragraph(ex):
 def test_output_blocks_are_balanced(ex, raw):
     out = to_blocks(ex, raw)
     assert ex._validate_gutenberg(out) == []
+
+
+# --------------------------------------------------------------- source classes
+#
+# A migrated body that keeps the SOURCE site's class names depends on the source
+# site's stylesheet, which does not exist on the destination. Found live on the
+# Skaug blog 2026-08-29: 17 posts shipped centre-aligned because a `text-center`
+# wrapper class came across with the markup, and bodies carried author-bio /
+# service-areas / cta-section / highlight-box, none of which style anything on a
+# DealerOn blog. They render as nothing, or worse, as something.
+
+
+def test_source_classes_are_dropped_from_links(ex):
+    out = ex.clean_html('<p><a class="fancy-link old-site-cta" href="/a">a link</a></p>')
+    assert 'fancy-link' not in out
+    assert 'old-site-cta' not in out
+    assert 'href="/a"' in out, 'the link itself must survive'
+
+
+def test_source_classes_are_dropped_from_images(ex):
+    out = ex.clean_html('<p><img class="lazy hero-img" src="/x.jpg" alt="A photo"></p>')
+    assert 'lazy' not in out
+    assert 'hero-img' not in out
+    assert 'src="/x.jpg"' in out and 'alt="A photo"' in out
+
+
+def test_wrapper_classes_do_not_survive_the_unwrap(ex):
+    out = ex.clean_html(
+        '<div class="author-bio"><section class="text-center"><p class="lead">Copy.</p></section></div>'
+    )
+    assert 'author-bio' not in out
+    assert 'text-center' not in out, 'this class is what centred 17 live posts'
+    assert 'lead' not in out
+    assert 'Copy.' in out
+
+
+# THE EXCEPTION, and it is load-bearing. A button link is emitted as raw
+# wp:html with the anchor exactly as-is, so `btn btn-cta` is the only thing
+# making it render as a button instead of a text link. Strip it and every CTA in
+# every migrated post silently degrades.
+def test_button_links_keep_their_standardised_class(ex):
+    out = ex.clean_html('<p><a class="btn btn-primary" href="/contact">Free Consultation</a></p>')
+    assert 'btn btn-cta' in out, 'the standardised button class must survive'
+    assert 'data-is-button="true"' in out
+
+
+def test_button_survives_all_the_way_into_the_block(ex):
+    blocks = to_blocks(ex, '<p><a class="button" href="/contact">Get Help</a></p>')
+    assert 'btn btn-cta' in blocks
+    assert 'data-is-button' not in blocks, 'the marker is internal and must not ship'
+    assert 'Get Help' in blocks

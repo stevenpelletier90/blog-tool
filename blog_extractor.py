@@ -1040,6 +1040,26 @@ class BlogExtractor:
                         if 'data-dotagging-element-subtype' not in link.attrs:
                             link['data-dotagging-element-subtype'] = 'cta_button'
 
+        # Drop the source site's classes from ordinary links.
+        #
+        # WHY: a migrated body that keeps the old site's class names depends on
+        # the old site's stylesheet, which does not exist on the destination -
+        # so it renders as nothing, or worse, as something. Found live on the
+        # Skaug blog 2026-08-29: 17 posts shipped centre-aligned because a
+        # `text-center` wrapper class came across with the markup, and bodies
+        # carried author-bio / service-areas / cta-section / highlight-box,
+        # none of which style anything on a DealerOn blog.
+        #
+        # BUTTONS ARE THE EXCEPTION and must keep theirs: a button link is
+        # emitted as raw wp:html with the anchor as-is, so `btn btn-cta` - set
+        # just above - is the only thing that makes it render as a button rather
+        # than a text link. Strip it and every CTA in every migrated post
+        # silently becomes a plain link.
+        for link in soup.find_all('a'):
+            if isinstance(link, Tag) and link.get('data-is-button') != 'true':
+                if 'class' in link.attrs:
+                    del link['class']
+
         # Replace <br> tags with spaces to prevent text from running together
         # This is critical - br tags separate text but shouldn't create new paragraphs
         for br in soup.find_all('br'):
@@ -1091,8 +1111,13 @@ class BlogExtractor:
 
         # Define which attributes to keep for specific tags
         allowed_attrs = {
-            'a': ['href', 'class', 'data-is-button'],  # Allow class and button marker for links
-            'img': ['src', 'alt', 'title', 'width', 'height', 'class'],  # Image attributes
+            # 'class' survives here ONLY for buttons - ordinary links had theirs
+            # removed above. A button link is emitted as raw wp:html, so
+            # 'btn btn-cta' is what makes it a button and not a text link.
+            'a': ['href', 'class', 'data-is-button'],  # button class + marker
+            # No 'class' on images: the source site's image classes style
+            # nothing on the destination. WordPress adds its own on the block.
+            'img': ['src', 'alt', 'title', 'width', 'height'],  # Image attributes
             'th': ['colspan', 'rowspan', 'scope'],  # Table header cell spans
             'td': ['colspan', 'rowspan'],  # Table data cell spans
             'ol': ['start', 'type', 'reversed'],  # Ordered-list semantics
