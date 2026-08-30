@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Source-site classes stripped from migrated bodies**: the source site's class names depend on the source site's stylesheet, which does not exist on the destination. Found live on a dealer blog where 17 published posts were centre-aligned end to end because a `text-center` wrapper class came across with the markup. Ordinary links and images now lose their classes; links marked as buttons keep the standardised `btn btn-cta`, which is what makes a CTA render as a button rather than a text link
 - Duplicate `wp:post_id` values in exported XML (IDs are now guaranteed unique)
 - `<p>` tags no longer injected inside table cells (malformation guard)
 - Content fidelity issues in WordPress export
