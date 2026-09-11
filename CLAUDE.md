@@ -25,7 +25,7 @@ A production-ready blog post extraction and migration tool that converts blog co
 
 ### 1. BeautifulSoup Formatter
 
-**Location:** `_convert_relative_urls_to_absolute()` around line 1550-1600
+**Location:** `_convert_relative_urls_to_absolute()`
 
 ```python
 # MUST use formatter="minimal"
@@ -34,38 +34,25 @@ soup.decode(formatter="minimal")
 
 **Why:** BeautifulSoup adds line breaks in long `href` attributes without this
 **Impact:** WordPress truncates URLs split across lines during import, breaking all links
-**Never use:** `formatter="html"` or `formatter="html5"`
+**Keep it `minimal`:** `formatter="html"` and `formatter="html5"` both reintroduce the line breaks
 
 ### 2. HTTPS URLs in WordPress XML
 
-**Location:** `save_to_xml()` around line 1750-1800
+**Location:** `save_to_xml()`
 
 **Why:** WordPress server cannot access `file://` URLs (they're local to your machine)
 **Impact:** Images won't import to WordPress media library
 **Solution:** Use resolved HTTPS URLs in XML; download locally as backup only
 
-### 3. Windows Asyncio Event Loop (Python 3.14+ Modern Approach)
+### 3. Windows Asyncio Event Loop
 
 **Location:** Top of extract.py, blog_extractor.py, streamlit_app.py
 
-**Modern Approach (Python 3.14+):**
-
-- No manual event loop policy setting required
-- Python 3.8+ defaults to ProactorEventLoop on Windows (correct for Playwright subprocess support)
-- Code uses `asyncio.run()` which automatically uses the default event loop
-- Only ResourceWarning filter needed to suppress Playwright subprocess cleanup warnings
-
-**Why:**
-
-- WindowsProactorEventLoopPolicy deprecated in Python 3.14, removed in 3.16
-- Default event loop on Windows is already correct for Playwright
-- Modern asyncio patterns (asyncio.run()) handle event loop creation automatically
-
-**Impact:** Clean, modern code without deprecated API calls
+Use `asyncio.run()` and leave the event-loop policy alone. Python's default loop on Windows is already ProactorEventLoop, which Playwright's subprocesses need, and `WindowsProactorEventLoopPolicy` is deprecated in 3.14 and removed in 3.16. The only Windows-specific line is the ResourceWarning filter for Playwright subprocess cleanup.
 
 ### 4. MD5 Content Hashing
 
-**Location:** `extract_blog_data()` around line 850 and 1230
+**Location:** `extract_blog_data()`
 
 **Why:** Prevents duplicate posts when same content appears at different URLs
 **Impact:** Faster extraction, cleaner WordPress import
@@ -101,7 +88,7 @@ https://s3.amazonaws.com/bucket/image.jpg?signature=...&expires=...
 
 **Why:** Protects against images being removed from source sites
 
-**Location:** `_resolve_image_url()` and `_download_image()` around line 1477-1550
+**Location:** `_resolve_image_url()` and `_download_image()`
 
 ### Image Import Strategy
 
@@ -120,7 +107,7 @@ Images are imported via WordPress XML only - no local downloads by default.
 
 ## Platform Detection Strategy
 
-**Location:** `detect_platform()` around line 400
+**Location:** `detect_platform()`
 
 Uses meta tags and CSS classes to auto-detect blog platforms. Platform-specific selectors take priority over generic fallbacks.
 
@@ -130,7 +117,7 @@ Uses meta tags and CSS classes to auto-detect blog platforms. Platform-specific 
 
 ## Content Extraction Rules
 
-**Location:** `extract_content()` around line 500
+**Location:** `extract_content()`
 
 1. Platform-specific selectors take priority (e.g., `div.blog__article__content__text` for DealerOn)
 2. Generic fallbacks if platform selectors fail
@@ -206,9 +193,9 @@ libgbm1, libpango-1.0-0, libcairo2, libasound2, libatspi2.0-0, libwayland-client
 
 ## Files Overview
 
-- **blog_extractor.py** - Core `BlogExtractor` class (~2000 lines)
-- **extract.py** - CLI wrapper with argparse (~250 lines)
-- **streamlit_app.py** - Web UI with progress tracking (~680 lines)
+- **blog_extractor.py** - Core `BlogExtractor` class
+- **extract.py** - CLI wrapper with argparse
+- **streamlit_app.py** - Web UI with progress tracking
 - **setup.bat** - Automated Windows setup script (installs everything)
 - **setup.sh** - Automated Mac/Linux setup script (installs everything)
 - **run_extractor.bat** - Quick launcher for Windows (runs CLI extractor)
@@ -243,8 +230,8 @@ edits, using the venv's pinned ruff (`blog-extractor-env/`). Files Claude edits 
 pass through an editor, so nothing else tidies them. It always exits 0 and never blocks.
 
 **It deliberately does NOT run `ruff format`.** This repo has never adopted the
-formatter: `ruff check .` passes clean while `ruff format` would rewrite ~1995 of
-blog_extractor.py's 2917 lines. Running it in the hook would bury every one-line edit
+formatter: `ruff check .` passes clean while `ruff format` would rewrite most of
+blog_extractor.py. Running it in the hook would bury every one-line edit
 under a mass reformat and apply a standard the gate never checks. If you want ruff's
 formatter, adopt it as its own deliberate `ruff format .` commit first, then add it to
 the hook — not the other way round.
@@ -254,11 +241,3 @@ That script uses a blocklist, so anything not listed ships to end users in the z
 `ruff.toml` and `scripts/` are excluded there for exactly this reason.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full developer setup.
-
-## Future Improvements
-
-- Share single Playwright browser/context across URL fetches to reduce launch overhead
-- Replace MD5 with `hashlib.blake2s` for FIPS compliance
-- Move `logging.basicConfig` to CLI/UI entry points
-- Add CI automation (GitHub Actions) for ruff/mypy/pytest
-- Generate WordPress XML via streaming writer for memory efficiency on large migrations
