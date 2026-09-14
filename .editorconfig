@@ -1,0 +1,19 @@
+# Editor-level basics so any editor (and the EditorConfig extension in VS
+# Code) agrees on indentation and line endings.
+root = true
+
+[*]
+indent_style = space
+indent_size = 2
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# PEP 8: four spaces.
+[*.py]
+indent_size = 4
+
+# Markdown uses two trailing spaces for a hard line break.
+[*.md]
+trim_trailing_whitespace = false
