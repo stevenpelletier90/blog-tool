@@ -560,6 +560,12 @@ final_xml = soup.decode(formatter="minimal")
 3. **Single Playwright instance:** Each URL launches new browser (overhead)
 4. **MD5 hashing:** Not FIPS-compliant (use blake2s if needed)
 5. **No incremental updates:** Re-processes all URLs on each run
+6. **JS-rendered content on "static" platforms:** `fetch_content()` sends WordPress, Blogger and other static-detected
+   platforms through the requests fast path, so client-rendered content never arrives. Known case (2026-07):
+   `dealer25532.dealeron.com/blogs/10132/ram-1500-vs-silverado-vs-f-150-full-truck-comparison/` returns 200 with no
+   post body or `<table>`, and a Playwright `networkidle` + scroll render did not surface it either. Unbuilt idea: when
+   the HTML has `wp-block-table` but no `<table>`, retry with Playwright, after first confirming Playwright can get
+   that page at all. The table-preservation fix only helps tables that reach `clean_html()`.
 
 ## Future Optimizations
 
