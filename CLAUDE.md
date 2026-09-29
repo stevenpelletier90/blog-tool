@@ -21,7 +21,7 @@ A production-ready blog post extraction and migration tool that converts blog co
 - Content hashing (MD5) prevents duplicate processing
 - Semaphore-based concurrent processing with asyncio
 
-## Critical Constraints - DO NOT CHANGE
+## Constraints and why they hold
 
 ### 1. BeautifulSoup Formatter
 
@@ -224,7 +224,7 @@ Install dev tools: `pip install -r requirements-dev.txt`
 
 There are no git hooks — nothing gates a commit. Run the checks above yourself.
 
-**One Claude Code hook runs:** a PostToolUse formatter (`scripts/claude-format-hook.js`,
+**This repo defines one Claude Code hook:** a PostToolUse formatter (`scripts/claude-format-hook.js`,
 wired in `.claude/settings.json`) that runs `ruff check --fix` on `.py` files Claude
 edits, using the venv's pinned ruff (`blog-extractor-env/`). Files Claude edits never
 pass through an editor, so nothing else tidies them. It always exits 0 and never blocks.
