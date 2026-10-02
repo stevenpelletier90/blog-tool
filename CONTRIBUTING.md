@@ -58,10 +58,10 @@ python -m playwright install --with-deps
 
 The project uses modern Python tooling:
 
-- **ruff** (0.14.1) - Fast linting and formatting
-- **mypy** (1.18.2) - Static type checking
-- **pytest** (8.4.2) - Testing framework
-- **pytest-asyncio** (1.2.0) - Async test support
+- **ruff** (0.15.22) - Fast linting and formatting
+- **mypy** (2.4.0) - Static type checking
+- **pytest** (9.1.1) - Testing framework
+- **pytest-asyncio** (1.4.0) - Async test support
 - **types-requests** - Type stubs for requests library
 
 ## Adding Platform Support

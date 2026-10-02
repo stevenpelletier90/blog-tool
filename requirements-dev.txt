@@ -1,10 +1,10 @@
 # Linting
-ruff==0.15.21
+ruff==0.15.22
 
 # Typing
-mypy==2.3.0
-types-requests==2.33.0.20260712
-types-python-dateutil==2.9.0.20260518
+mypy==2.4.0
+types-requests==2.33.0.20260906
+types-python-dateutil==2.9.0.20260807
 types-aiofiles==25.1.0.20260518
 
 # Testing

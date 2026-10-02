@@ -39,7 +39,7 @@ const quote = (p) => (isWin ? `"${p}"` : `'${p.replace(/'/g, `'\\''`)}'`);
 const run = (cmdline) => spawnSync(cmdline, { cwd: projectDir, shell: true, stdio: 'ignore' });
 
 // Prefer the venv's ruff over a bare `ruff` on PATH. requirements-dev.txt pins
-// ruff==0.15.21, and only the venv binary honors that pin — a PATH ruff is
+// ruff==0.15.22, and only the venv binary honors that pin — a PATH ruff is
 // whatever version happens to be installed globally, which can format to a
 // different style than the repo's gate. Same class of bug as bare `npx <tool>`
 // silently fetching an unpinned tool from the registry. There is currently NO

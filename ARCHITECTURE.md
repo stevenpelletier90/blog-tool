@@ -457,11 +457,11 @@ streamlit run streamlit_app.py
 
 ```bash
 # requirements.txt (Playwright omitted)
-beautifulsoup4==4.14.2
-requests==2.32.5
-lxml==6.0.2
-tqdm==4.67.1
-streamlit==1.50.0
+beautifulsoup4==4.15.0
+requests==2.34.2
+lxml==6.1.3
+tqdm==4.70.1
+streamlit==1.64.0
 ```
 
 **Fallback mode:** Uses requests library only (no Playwright)
