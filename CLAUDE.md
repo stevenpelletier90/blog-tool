@@ -224,10 +224,11 @@ Install dev tools: `pip install -r requirements-dev.txt`
 
 There are no git hooks — nothing gates a commit. Run the checks above yourself.
 
-**This repo defines one Claude Code hook:** a PostToolUse formatter (`scripts/claude-format-hook.js`,
-wired in `.claude/settings.json`) that runs `ruff check --fix` on `.py` files Claude
-edits, using the venv's pinned ruff (`blog-extractor-env/`). Files Claude edits never
-pass through an editor, so nothing else tidies them. It always exits 0 and never blocks.
+**This repo defines no Claude Code hook.** Files Claude edits are auto-fixed by the
+user-level PostToolUse hook (`~/.claude/hooks/format-on-edit.mjs`, shared by every repo),
+which runs `ruff check --fix` on `.py` files Claude edits, using the venv's pinned ruff
+(`blog-extractor-env/`). Files Claude edits never pass through an editor, so nothing else
+tidies them. It always exits 0 and never blocks.
 
 **It deliberately does NOT run `ruff format`.** This repo has never adopted the
 formatter: `ruff check .` passes clean while `ruff format` would rewrite most of
