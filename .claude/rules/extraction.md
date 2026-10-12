@@ -1,0 +1,131 @@
+---
+paths:
+  - "blog_extractor.py"
+  - "extract.py"
+  - "streamlit_app.py"
+---
+
+# Extraction code
+
+## Constraints and why they hold
+
+### 1. BeautifulSoup Formatter
+
+**Location:** `_convert_relative_urls_to_absolute()`
+
+```python
+# MUST use formatter="minimal"
+soup.decode(formatter="minimal")
+```
+
+**Why:** BeautifulSoup adds line breaks in long `href` attributes without this
+**Impact:** WordPress truncates URLs split across lines during import, breaking all links
+**Keep it `minimal`:** `formatter="html"` and `formatter="html5"` both reintroduce the line breaks
+
+### 2. HTTPS URLs in WordPress XML
+
+**Location:** `save_to_xml()`
+
+**Why:** WordPress server cannot access `file://` URLs (they're local to your machine)
+**Impact:** Images won't import to WordPress media library
+**Solution:** Use resolved HTTPS URLs in XML; download locally as backup only
+
+### 3. Windows Asyncio Event Loop
+
+**Location:** Top of extract.py, blog_extractor.py, streamlit_app.py
+
+Use `asyncio.run()` and leave the event-loop policy alone. Python's default loop on Windows is already ProactorEventLoop, which Playwright's subprocesses need, and `WindowsProactorEventLoopPolicy` is deprecated in 3.14 and removed in 3.16. The only Windows-specific line is the ResourceWarning filter for Playwright subprocess cleanup.
+
+### 4. MD5 Content Hashing
+
+**Location:** `extract_blog_data()`
+
+**Why:** Prevents duplicate posts when same content appears at different URLs
+**Impact:** Faster extraction, cleaner WordPress import
+**Note:** Uses content only, not title (titles may differ for same content)
+**Future:** For FIPS-compliant environments, migrate to `hashlib.blake2s` or SHA-256
+
+### 5. Concurrent Request Limits
+
+**Default:** 5 concurrent requests (semaphore limit)
+
+**Why:** Too many concurrent requests overwhelm servers or trigger rate-limiting
+**Impact:** 10+ concurrent may cause failures or IP bans
+**Safe range:** 3-5 concurrent requests
+
+## Image Handling - Critical Feature
+
+### WebDAM/Dynamic URL Resolution
+
+Many dealer sites use WebDAM (Digital Asset Management) serving images through dynamic PHP endpoints that redirect to temporary S3 signed URLs:
+
+```bash
+https://dealerdotcom.webdamdb.com/embeddables/display.php?size=550&webid=XYZ123
+  ↓ redirects to ↓
+https://s3.amazonaws.com/bucket/image.jpg?signature=...&expires=...
+```
+
+**The tool MUST:**
+
+1. Detect dynamic endpoints (WebDAM, dealer.com URLs with parameters)
+2. Follow redirects to get actual S3 URL using `requests.head()`
+3. Strip signed parameters (expiration/signature) for permanent URLs
+4. Cache resolution results to avoid duplicate requests
+
+**Why:** Protects against images being removed from source sites
+
+**Location:** `_resolve_image_url()` and `_download_image()`
+
+### Image Import Strategy
+
+**Default:** `download_images=False` (Streamlit UI always uses False)
+
+Images are imported via WordPress XML only - no local downloads by default.
+
+**How it works:**
+
+1. Tool resolves dynamic URLs (WebDAM → S3) to get permanent HTTPS URLs
+2. HTTPS URLs are included in XML `<img>` tags and `<wp:attachment_url>` entries
+3. WordPress automatically downloads images from HTTPS URLs during XML import
+4. Images appear in WordPress Media Library after import
+
+**Optional local backup:** CLI users can use `--download-images` flag to also save images to `output/images/` directory as backup. However, XML still uses HTTPS URLs (not file:// paths) for WordPress compatibility.
+
+## Platform Detection Strategy
+
+**Location:** `detect_platform()`
+
+Uses meta tags and CSS classes to auto-detect blog platforms. Platform-specific selectors take priority over generic fallbacks.
+
+**Supported:** Wix, Webflow, WordPress, DealerOn, DealerInspire, Medium, Squarespace, Blogger (8+ platforms)
+
+**Adding new platforms:** See [CONTRIBUTING.md](CONTRIBUTING.md#adding-platform-support)
+
+## Content Extraction Rules
+
+**Location:** `extract_content()`
+
+1. Platform-specific selectors take priority (e.g., `div.blog__article__content__text` for DealerOn)
+2. Generic fallbacks if platform selectors fail
+3. Content validation - must have >100 characters of text
+4. Link extraction - only from content areas, excludes navigation/metadata
+
+### Categories/Tags Filtering
+
+Explicitly excludes site-wide SEO terms and navigation items:
+
+- Does NOT use `meta[name="keywords"]` (contains dealer/SEO terms)
+- Filters out: dealer, dealership, inventory, service, parts, finance, etc.
+- Only extracts from blog-specific areas (e.g., `div.meta-below-content`)
+
+## Callback-Based Logging Pattern
+
+```python
+def _log(self, level: str, message: str):
+    if self.callback:
+        self.callback(level, message)  # UI can display this
+    logger.log(getattr(logging, level.upper()), message)
+```
+
+**Why:** Allows UI integration (Streamlit) without tight coupling
+**Note:** The extractor calls `logging.basicConfig`; override in CLI/UI entry points if host app needs custom handlers
