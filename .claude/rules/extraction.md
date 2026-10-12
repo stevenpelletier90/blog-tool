@@ -99,7 +99,7 @@ Uses meta tags and CSS classes to auto-detect blog platforms. Platform-specific 
 
 **Supported:** Wix, Webflow, WordPress, DealerOn, DealerInspire, Medium, Squarespace, Blogger (8+ platforms)
 
-**Adding new platforms:** See [CONTRIBUTING.md](CONTRIBUTING.md#adding-platform-support)
+**Adding new platforms:** See [CONTRIBUTING.md](../../CONTRIBUTING.md#adding-platform-support)
 
 ## Content Extraction Rules
 
