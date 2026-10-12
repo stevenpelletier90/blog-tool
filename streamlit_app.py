@@ -8,22 +8,19 @@ __version__ = "1.0.0"
 
 # Setup Windows environment before any other imports
 import sys
+
 if sys.platform.startswith('win'):
-    import asyncio
     import warnings
-    # Python 3.14+: Explicitly create ProactorEventLoop (supports subprocesses) before Streamlit imports
-    # This is the modern approach - direct class instantiation instead of deprecated Policy API
-    loop = asyncio.ProactorEventLoop()
-    asyncio.set_event_loop(loop)
     # Suppress Playwright subprocess cleanup warnings on Windows
     warnings.filterwarnings("ignore", category=ResourceWarning)
 
 # Standard library imports
 import asyncio
 import logging
+import subprocess
 import time
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 from urllib.parse import urlparse
 
 # Third-party imports
@@ -32,31 +29,31 @@ import streamlit as st
 # Local imports
 from blog_extractor import BlogExtractor
 
-# Install Playwright browsers on Streamlit Cloud (runs once on first startup)
-# This is required because Streamlit Cloud doesn't have browsers pre-installed
-import subprocess
-from pathlib import Path
 
-def install_playwright_browsers():
-    """Install Playwright browsers if not already installed (for Streamlit Cloud deployment)."""
-    # Check if running on Streamlit Cloud (Linux environment)
-    if sys.platform.startswith('linux'):
-        # Check if chromium browser is already installed
-        playwright_cache = Path.home() / '.cache' / 'ms-playwright'
-        chromium_path = playwright_cache / 'chromium-1187' / 'chrome-linux' / 'chrome'
+@st.cache_resource(show_spinner=False)
+def install_playwright_browsers() -> None:
+    """Install Playwright's Chromium on Streamlit Cloud, once per server process.
 
-        if not chromium_path.exists():
-            try:
-                print("Installing Playwright browsers for Streamlit Cloud...")
-                subprocess.run(['playwright', 'install', 'chromium'], check=True, capture_output=True)
-                print("Playwright browsers installed successfully!")
-            except subprocess.CalledProcessError as e:
-                print(f"Warning: Failed to install Playwright browsers: {e}")
-                print("App will fall back to requests library for extraction.")
-            except FileNotFoundError:
-                print("Warning: playwright command not found. Falling back to requests library.")
+    Streamlit Cloud (Linux) ships no browsers. Playwright's own installer
+    downloads only when the Chromium build the installed playwright package
+    needs is missing, so no browser revision is hard-coded here and a
+    Playwright upgrade needs no edit. `sys.executable -m playwright` runs the
+    installer from this interpreter, so it does not depend on PATH.
+    st.cache_resource keeps it from re-running on every script rerun.
+    """
+    if not sys.platform.startswith('linux'):
+        return
+    try:
+        subprocess.run(
+            [sys.executable, '-m', 'playwright', 'install', 'chromium'],
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: Failed to install Playwright browsers: {e}")
+        print("App will fall back to requests library for extraction.")
 
-# Run browser installation check on app startup
+
 install_playwright_browsers()
 
 # Configure logging (after imports)
@@ -65,6 +62,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
@@ -139,20 +137,20 @@ def display_header():
         - ✅ Concurrent processing enabled by default (3-5x faster!)
         """)
 
-def validate_urls(urls: List[str]) -> List[str]:
+def validate_urls(urls: list[str]) -> list[str]:
     """Validate and clean URL list"""
     valid_urls = []
     for url in urls:
         url = url.strip()
-        if url and (url.startswith('http://') or url.startswith('https://')):
+        if url and url.startswith(('http://', 'https://')):
             valid_urls.append(url)
     return valid_urls
 
-def analyze_links(extraction_results: List[Dict]) -> Dict[str, Any]:
+def analyze_links(extraction_results: list[dict]) -> dict[str, Any]:
     """Analyze all extracted links and categorize them with anchor text"""
     source_domains = set()
-    internal_links: Dict[str, Dict[str, Any]] = {}  # {url: {'count': N, 'texts': [anchor texts], 'sources': [blog post URLs]}}
-    external_links: Dict[str, Dict[str, Any]] = {}
+    internal_links: dict[str, dict[str, Any]] = {}  # {url: {'count': N, 'texts': [anchor texts], 'sources': [blog post URLs]}}
+    external_links: dict[str, dict[str, Any]] = {}
 
     # Collect source domains
     for result in extraction_results:
@@ -282,11 +280,10 @@ def display_find_replace():
     with col2:
         replace_text = st.text_input("Replace with:", placeholder="newsite.com/blog")
 
-    if find_text and replace_text:
-        if st.button("Add Replacement"):
-            st.session_state.replacements.append((find_text, replace_text))
-            st.success(f"✅ Will replace '{find_text}' with '{replace_text}'")
-            st.rerun()
+    if find_text and replace_text and st.button("Add Replacement"):
+        st.session_state.replacements.append((find_text, replace_text))
+        st.success(f"✅ Will replace '{find_text}' with '{replace_text}'")
+        st.rerun()
 
     # Show active replacements
     if st.session_state.replacements:
@@ -315,7 +312,7 @@ def apply_replacements(xml_content: str) -> str:
 
     return modified_content
 
-def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool = False, include_images: bool = True, skip_duplicates: bool = True, fast_mode: bool = False):
+def process_urls(urls: list[str], max_concurrent: int = 1, relative_links: bool = False, include_images: bool = True, skip_duplicates: bool = True, fast_mode: bool = False):
     """Process URLs with progress tracking (supports async concurrent mode)"""
     if not urls:
         st.error("❌ No valid URLs to process")
@@ -326,7 +323,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
     status_text = st.empty()
 
     # Progress tracking with active URL monitoring
-    counters: Dict[str, Any] = {
+    counters: dict[str, Any] = {
         'total': len(urls),
         'completed': 0,
         'start_time': time.time(),
@@ -543,6 +540,7 @@ def process_urls(urls: List[str], max_concurrent: int = 1, relative_links: bool 
                     })
 
             except Exception as e:
+                logger.debug("Extraction failed for %s", url, exc_info=True)
                 st.session_state.error_log.append({
                     'url': url,
                     'error': str(e)
@@ -586,6 +584,7 @@ def generate_output_files(extractor: BlogExtractor):
         st.session_state.links_content = extractor.get_links_content()
 
     except Exception as e:
+        logger.exception("Generating output content failed")
         st.error(f"❌ Error generating output content: {e}")
 
 def display_results():
@@ -742,7 +741,7 @@ def provide_downloads():
         file_name=f"blog_posts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml",
         mime="application/xml",
         help="WordPress XML file ready for import - contains all posts, categories, tags, and links",
-        use_container_width=True
+        width="stretch"
     )
 
     st.caption("💡 All links are included in the XML file and visible in the Extraction Results section above")
@@ -769,7 +768,7 @@ def main():
     start_extraction = st.button(
         "🚀 EXTRACT BLOG POSTS NOW",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         disabled=len(urls) == 0 or st.session_state.is_processing,
         help="Start extracting all blog posts with your configured settings"
     )

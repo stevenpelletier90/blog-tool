@@ -4,9 +4,9 @@ Create distribution-ready zip file for Blog Extractor Tool
 Excludes development files, caches, and virtual environments
 """
 
+import sys
 import zipfile
 from pathlib import Path
-import sys
 
 # Files and directories to exclude
 EXCLUDE_PATTERNS = [
@@ -123,4 +123,4 @@ if __name__ == "__main__":
         print("  4. Everything installs automatically!")
     except Exception as e:
         print(f"[ERROR] Error creating distribution: {e}", file=sys.stderr)
-        sys.exit(1)
+        raise SystemExit(1) from e

@@ -20,9 +20,10 @@ import re
 import sys
 import time
 import warnings
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, cast
+from typing import TYPE_CHECKING, Any, cast
 from urllib.parse import urljoin, urlparse
 
 if TYPE_CHECKING:
@@ -44,8 +45,8 @@ except ImportError:
     raise
 
 # Check if Playwright is available (both sync and async)
-async_playwright: Optional[Any] = None
-sync_playwright: Optional[Any] = None
+async_playwright: Any | None = None
+sync_playwright: Any | None = None
 
 try:
     from playwright.async_api import async_playwright as _async_pw
@@ -100,7 +101,7 @@ class BlogExtractor:
         self,
         urls_file: str = URLS_FILE,
         output_dir: str = OUTPUT_DIR,
-        callback: Optional[Callable[[str, str], None]] = None,
+        callback: Callable[[str, str], None] | None = None,
         verbose: bool = True,
         relative_links: bool = False,
         include_images: bool = True,
@@ -110,7 +111,7 @@ class BlogExtractor:
     ):
         self.urls_file = urls_file
         self.output_dir = output_dir
-        self.extracted_data: List[Dict[str, Any]] = []
+        self.extracted_data: list[dict[str, Any]] = []
         self.callback = callback  # Optional callback for UI updates (level, message)
         self.verbose = verbose
         self.relative_links = relative_links  # Keep internal links relative in XML output
@@ -118,17 +119,17 @@ class BlogExtractor:
         self.skip_duplicates = skip_duplicates  # Skip duplicate content (default True)
         self.download_images = download_images  # Download images locally instead of using external URLs
         self.skip_playwright = skip_playwright  # Fast mode - skip Playwright for WordPress/static sites
-        self.seen_hashes: Set[str] = set()  # For duplicate detection
+        self.seen_hashes: set[str] = set()  # For duplicate detection
         # XML export ID bookkeeping (reset per export via _reset_xml_ids)
-        self._xml_used_ids: Set[int] = set()  # every wp:post_id emitted this export
-        self._xml_attachment_ids: Dict[str, int] = {}  # resolved image URL -> attachment ID
-        self._xml_written_attachments: Set[str] = set()  # image URLs already emitted as items
-        self.resolved_image_cache: Dict[str, str] = {}  # Cache for resolved image URLs
-        self.downloaded_images: Dict[str, str] = {}  # Map original URL -> local file path
+        self._xml_used_ids: set[int] = set()  # every wp:post_id emitted this export
+        self._xml_attachment_ids: dict[str, int] = {}  # resolved image URL -> attachment ID
+        self._xml_written_attachments: set[str] = set()  # image URLs already emitted as items
+        self.resolved_image_cache: dict[str, str] = {}  # Cache for resolved image URLs
+        self.downloaded_images: dict[str, str] = {}  # Map original URL -> local file path
         # Shared Playwright browser for async concurrent mode (reduces overhead)
-        self._playwright: Optional['Playwright'] = None
-        self._browser: Optional['Browser'] = None
-        self._context: Optional['BrowserContext'] = None
+        self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
+        self._context: BrowserContext | None = None
 
         # Create output directory if it doesn't exist
         Path(self.output_dir).mkdir(exist_ok=True)
@@ -197,15 +198,15 @@ class BlogExtractor:
             # Give asyncio time to cleanup pipes on Windows
             await asyncio.sleep(0.1)
         except Exception:
-            # Suppress Windows asyncio cleanup warnings (harmless)
-            pass
+            # Windows asyncio cleanup noise is harmless; keep the trace at debug level
+            logger.debug("Browser cleanup raised", exc_info=True)
 
 
     def get_content_hash(self, content: str) -> str:
         """Generate blake2s hash of content for duplicate detection (FIPS-compliant)"""
         return hashlib.blake2s(content.encode('utf-8')).hexdigest()
 
-    def _quick_platform_check(self, url: str) -> Tuple[Optional[str], Optional[str]]:
+    def _quick_platform_check(self, url: str) -> tuple[str | None, str | None]:
         """Quick platform detection using basic requests (no Playwright) - FAST!
 
         Returns (platform, html) or (None, None) if detection fails.
@@ -250,9 +251,10 @@ class BlogExtractor:
 
         except Exception as e:
             self._log("debug", f"  Quick platform check failed: {e}")
+            logger.debug("Quick platform check failed for %s", url, exc_info=True)
             return None, None
 
-    def _needs_javascript_rendering(self, platform: Optional[str]) -> bool:
+    def _needs_javascript_rendering(self, platform: str | None) -> bool:
         """Determine if a platform needs JavaScript rendering (Playwright)
 
         Returns:
@@ -321,7 +323,7 @@ class BlogExtractor:
         self._log("info", "  Platform: Generic (no specific platform detected)")
         return 'generic'
 
-    def fetch_content(self, url: str, max_retries: int = 3) -> Optional[str]:
+    def fetch_content(self, url: str, max_retries: int = 3) -> str | None:
         """Fetch URL content with SMART platform detection - skips Playwright for static sites!
 
         Performance optimization: Quickly detects platform type first, then:
@@ -356,6 +358,7 @@ class BlogExtractor:
                     return response.text
                 except Exception as e:
                     self._log("warning", f"  Requests attempt {attempt + 1} failed: {e}")
+                    logger.debug("requests attempt failed for %s", url, exc_info=True)
                     if attempt < max_retries - 1:
                         delay = 2 ** attempt
                         self._log("info", f"  Retrying in {delay} seconds...")
@@ -388,6 +391,7 @@ class BlogExtractor:
                             except Exception as e:
                                 # Continue anyway, content might use different selector
                                 self._log("debug", f"  Selector wait failed (expected): {e}")
+                                logger.debug("Selector wait failed for %s", url, exc_info=True)
                             page.wait_for_timeout(500)  # Brief wait for dynamic content
 
                             # OPTIMIZED SCROLLING: Faster but still loads all images
@@ -423,6 +427,7 @@ class BlogExtractor:
 
                 except Exception as e:
                     self._log("warning", f"  Playwright attempt {attempt + 1} failed: {e}")
+                    logger.debug("Playwright attempt failed for %s", url, exc_info=True)
 
                     if attempt < max_retries - 1:
                         # Exponential backoff: 2^attempt seconds (1s, 2s, 4s)
@@ -450,6 +455,7 @@ class BlogExtractor:
 
             except Exception as e:
                 self._log("warning", f"  Requests attempt {attempt + 1} failed: {e}")
+                logger.debug("requests attempt failed for %s", url, exc_info=True)
 
                 if attempt < max_retries - 1:
                     # Exponential backoff
@@ -461,7 +467,7 @@ class BlogExtractor:
 
         return None
 
-    async def fetch_content_async(self, url: str, max_retries: int = 3) -> Optional[str]:
+    async def fetch_content_async(self, url: str, max_retries: int = 3) -> str | None:
         """Async version: Fetch URL content with optional Playwright skip (fast mode)"""
         if not HAS_ASYNC_PLAYWRIGHT or async_playwright is None:
             # Fall back to synchronous version if async not available
@@ -474,18 +480,21 @@ class BlogExtractor:
             for attempt in range(max_retries):
                 try:
                     # Use aiohttp for TRUE async requests
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(
+                    async with (
+                        aiohttp.ClientSession() as session,
+                        session.get(
                             url,
                             headers={'User-Agent': random.choice(self.user_agents)},
                             timeout=aiohttp.ClientTimeout(total=30)
-                        ) as response:
-                            response.raise_for_status()
-                            text = await response.text()
-                            self._log("info", "  Fast mode succeeded with aiohttp!")
-                            return text
+                        ) as response,
+                    ):
+                        response.raise_for_status()
+                        text = await response.text()
+                        self._log("info", "  Fast mode succeeded with aiohttp!")
+                        return text
                 except Exception as e:
                     self._log("warning", f"  Aiohttp attempt {attempt + 1} failed: {e}")
+                    logger.debug("Fast-mode aiohttp attempt failed for %s", url, exc_info=True)
                     if attempt < max_retries - 1:
                         delay = 2 ** attempt
                         self._log("info", f"  Retrying in {delay} seconds...")
@@ -516,16 +525,19 @@ class BlogExtractor:
             for attempt in range(max_retries):
                 try:
                     # Use aiohttp for TRUE async requests (enables real concurrency!)
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(
+                    async with (
+                        aiohttp.ClientSession() as session,
+                        session.get(
                             url,
                             headers={'User-Agent': random.choice(self.user_agents)},
                             timeout=aiohttp.ClientTimeout(total=30)
-                        ) as response:
-                            response.raise_for_status()
-                            return await response.text()
+                        ) as response,
+                    ):
+                        response.raise_for_status()
+                        return await response.text()
                 except Exception as e:
                     self._log("warning", f"  Aiohttp attempt {attempt + 1} failed: {e}")
+                    logger.debug("aiohttp attempt failed for %s", url, exc_info=True)
                     if attempt < max_retries - 1:
                         delay = 2 ** attempt
                         self._log("info", f"  Retrying in {delay} seconds...")
@@ -559,6 +571,7 @@ class BlogExtractor:
                         except Exception as e:
                             # Continue anyway, content might use different selector
                             self._log("debug", f"  Selector wait failed (expected): {e}")
+                            logger.debug("Selector wait failed for %s", url, exc_info=True)
                         await page.wait_for_timeout(500)  # Brief wait for dynamic content
 
                         # OPTIMIZED SCROLLING: Faster but still loads all images
@@ -596,6 +609,7 @@ class BlogExtractor:
 
             except Exception as e:
                 self._log("warning", f"  Async Playwright attempt {attempt + 1} failed: {e}")
+                logger.debug("Async Playwright attempt failed for %s", url, exc_info=True)
 
                 if attempt < max_retries - 1:
                     # Exponential backoff: 2^attempt seconds (1s, 2s, 4s)
@@ -607,7 +621,7 @@ class BlogExtractor:
 
         return None
 
-    def extract_categories(self, soup: BeautifulSoup) -> List[str]:
+    def extract_categories(self, soup: BeautifulSoup) -> list[str]:
         """Extract categories - only from blog-specific areas, not navigation"""
         # DealerInspire - div.meta-below-content with rel="category tag" links (Speck Buick GMC)
         meta_below = soup.select_one('div.meta-below-content')
@@ -708,7 +722,7 @@ class BlogExtractor:
 
         return filtered_categories
 
-    def extract_tags(self, soup: BeautifulSoup) -> List[str]:
+    def extract_tags(self, soup: BeautifulSoup) -> list[str]:
         """Extract tags from blog-specific areas only"""
         selectors = [
             # Priority Honda/DealerOn-specific selectors
@@ -905,7 +919,7 @@ class BlogExtractor:
         return ""
 
     @staticmethod
-    def _has_class_token(tag: Tag, tokens: Set[str]) -> bool:
+    def _has_class_token(tag: Tag, tokens: set[str]) -> bool:
         """True if any of the tag's CSS classes is exactly one of tokens"""
         classes = tag.get('class')
         if not classes or not isinstance(classes, list):
@@ -1014,31 +1028,34 @@ class BlogExtractor:
         for link in soup.find_all('a', class_=True):
             if isinstance(link, Tag):
                 classes = link.get('class')
-                if classes and isinstance(classes, list):
-                    # Check if it's a button link (has 'btn' or 'button' in classes)
-                    if any('btn' in cls.lower() or 'button' in cls.lower() for cls in classes):
-                        link['data-is-button'] = 'true'
+                # A button link has 'btn' or 'button' in its classes
+                if (
+                    classes
+                    and isinstance(classes, list)
+                    and any('btn' in cls.lower() or 'button' in cls.lower() for cls in classes)
+                ):
+                    link['data-is-button'] = 'true'
 
-                        # Standardize button class to "btn btn-cta"
-                        link['class'] = 'btn btn-cta'
+                    # Standardize button class to "btn btn-cta"
+                    link['class'] = 'btn btn-cta'
 
-                        # Add required data-dotagging attributes if not present
-                        href_attr = link.get('href')
-                        href = str(href_attr) if href_attr else ''
-                        if 'data-dotagging-link-url' not in link.attrs:
-                            link['data-dotagging-link-url'] = href
-                        if 'data-dotagging-event' not in link.attrs:
-                            link['data-dotagging-event'] = 'cta_interaction'
-                        if 'data-dotagging-product-name' not in link.attrs:
-                            link['data-dotagging-product-name'] = 'Website|Custom Content'
-                        if 'data-dotagging-event-action-result' not in link.attrs:
-                            link['data-dotagging-event-action-result'] = 'open'
-                        if 'data-dotagging-element-type' not in link.attrs:
-                            link['data-dotagging-element-type'] = 'body'
-                        if 'data-dotagging-element-order' not in link.attrs:
-                            link['data-dotagging-element-order'] = '0'
-                        if 'data-dotagging-element-subtype' not in link.attrs:
-                            link['data-dotagging-element-subtype'] = 'cta_button'
+                    # Add required data-dotagging attributes if not present
+                    href_attr = link.get('href')
+                    href = str(href_attr) if href_attr else ''
+                    if 'data-dotagging-link-url' not in link.attrs:
+                        link['data-dotagging-link-url'] = href
+                    if 'data-dotagging-event' not in link.attrs:
+                        link['data-dotagging-event'] = 'cta_interaction'
+                    if 'data-dotagging-product-name' not in link.attrs:
+                        link['data-dotagging-product-name'] = 'Website|Custom Content'
+                    if 'data-dotagging-event-action-result' not in link.attrs:
+                        link['data-dotagging-event-action-result'] = 'open'
+                    if 'data-dotagging-element-type' not in link.attrs:
+                        link['data-dotagging-element-type'] = 'body'
+                    if 'data-dotagging-element-order' not in link.attrs:
+                        link['data-dotagging-element-order'] = '0'
+                    if 'data-dotagging-element-subtype' not in link.attrs:
+                        link['data-dotagging-element-subtype'] = 'cta_button'
 
         # Drop the source site's classes from ordinary links.
         #
@@ -1056,9 +1073,8 @@ class BlogExtractor:
         # than a text link. Strip it and every CTA in every migrated post
         # silently becomes a plain link.
         for link in soup.find_all('a'):
-            if isinstance(link, Tag) and link.get('data-is-button') != 'true':
-                if 'class' in link.attrs:
-                    del link['class']
+            if isinstance(link, Tag) and link.get('data-is-button') != 'true' and 'class' in link.attrs:
+                del link['class']
 
         # Replace <br> tags with spaces to prevent text from running together
         # This is critical - br tags separate text but shouldn't create new paragraphs
@@ -1174,12 +1190,12 @@ class BlogExtractor:
                     # For button links, preserve class and data-* attributes
                     if element.name == 'a' and element.get('data-is-button') == 'true':
                         # Keep all data-* attributes and class for buttons
-                        allowed = ['href', 'class'] + [attr for attr in element.attrs.keys() if attr.startswith('data-')]
+                        allowed = ['href', 'class'] + [attr for attr in element.attrs if attr.startswith('data-')]
                     else:
                         # Keep only allowed attributes for this tag
                         allowed = allowed_attrs.get(element.name, [])
 
-                    attrs_to_remove = [attr for attr in element.attrs.keys() if attr not in allowed]
+                    attrs_to_remove = [attr for attr in element.attrs if attr not in allowed]
                     for attr in attrs_to_remove:
                         del element.attrs[attr]
                 else:
@@ -1304,7 +1320,7 @@ class BlogExtractor:
         gutenberg_blocks = []
 
         # Group consecutive inline/text elements into paragraphs
-        current_paragraph_parts: List[PageElement] = []
+        current_paragraph_parts: list[PageElement] = []
 
         # Process each top-level element
         for element in soup.children:
@@ -1437,11 +1453,11 @@ class BlogExtractor:
                 cap_html = f'<figcaption class="wp-element-caption">{cap}</figcaption>' if cap else ''
                 return f'<!-- wp:image -->\n<figure class="wp-block-image">{img_html}{cap_html}</figure>\n<!-- /wp:image -->'
             # No usable image (or images excluded): preserve exact markup as a valid HTML block
-            return f'<!-- wp:html -->\n{str(element)}\n<!-- /wp:html -->'
+            return f'<!-- wp:html -->\n{element!s}\n<!-- /wp:html -->'
 
         elif tag_name == 'dl':
             # No native definition-list block; preserve exact markup (always imports cleanly)
-            return f'<!-- wp:html -->\n{str(element)}\n<!-- /wp:html -->'
+            return f'<!-- wp:html -->\n{element!s}\n<!-- /wp:html -->'
 
         else:
             # For other elements, wrap in paragraph or return as-is
@@ -1491,7 +1507,7 @@ class BlogExtractor:
         return (f'<!-- wp:table -->\n<figure class="wp-block-table">{table_html}</figure>\n'
                 f'<!-- /wp:table -->')
 
-    def _validate_gutenberg(self, content: str) -> List[str]:
+    def _validate_gutenberg(self, content: str) -> list[str]:
         """Return structural issues; an empty list means the content is structurally sound.
 
         Checks two malformation classes: (1) unbalanced wp: block comments, and
@@ -1505,7 +1521,7 @@ class BlogExtractor:
         opens = re.findall(r'<!--\s*wp:([a-z0-9/-]+)(?:\s|-->)', content)
         closes = re.findall(r'<!--\s*/wp:([a-z0-9/-]+)\s*-->', content)
         open_counts, close_counts = Counter(opens), Counter(closes)
-        issues: List[str] = []
+        issues: list[str] = []
         for name in sorted(set(open_counts) | set(close_counts)):
             if open_counts[name] != close_counts[name]:
                 issues.append(
@@ -1521,13 +1537,13 @@ class BlogExtractor:
                 break
         return issues
 
-    def detect_content_warnings(self, content: str) -> List[str]:
+    def detect_content_warnings(self, content: str) -> list[str]:
         """Human-readable review flags for a post's converted content.
 
         Flags preserved tables (which the migration team may want to eyeball)
         and any structurally malformed Gutenberg blocks.
         """
-        warnings_list: List[str] = []
+        warnings_list: list[str] = []
         if content:
             soup = BeautifulSoup(content, 'html.parser')
             tables = [t for t in soup.find_all('table') if not t.find_parent('table')]
@@ -1593,10 +1609,15 @@ class BlogExtractor:
                 if isinstance(span, Tag):
                     text = span.get_text().strip()
                     # Check if it looks like a date (contains month name or numbers)
-                    if re.search(r'\d{1,2}', text) and not text.startswith('by'):
-                        # Likely a date
-                        if text and text != '/' and 'blog entries' not in text.lower():
-                            return text
+                    # Likely a date: has digits, isn't the byline, isn't a separator or entry count
+                    if (
+                        re.search(r'\d{1,2}', text)
+                        and not text.startswith('by')
+                        and text
+                        and text != '/'
+                        and 'blog entries' not in text.lower()
+                    ):
+                        return text
 
         # Webflow-specific: Handle multiple div.text-date-blog-post elements (first is often empty)
         webflow_dates = soup.select('div.text-date-blog-post')
@@ -1688,7 +1709,7 @@ class BlogExtractor:
 
         return ""
 
-    def extract_images_from_content(self, content: str) -> List[Dict[str, str]]:
+    def extract_images_from_content(self, content: str) -> list[dict[str, str]]:
         """Extract image URLs and attributes from Gutenberg content
 
         Note: Image URLs are NOT resolved here because this runs before
@@ -1715,7 +1736,7 @@ class BlogExtractor:
 
         return images
 
-    def extract_links(self, soup: BeautifulSoup, base_url: str) -> List[Dict[str, str]]:
+    def extract_links(self, soup: BeautifulSoup, base_url: str) -> list[dict[str, str]]:
         """Extract hyperlinks from blog post content only (not navigation/menus/tags)"""
         # First find the content area using same selectors as extract_content()
         content_selectors = [
@@ -1758,7 +1779,7 @@ class BlogExtractor:
         for link in content_element.find_all('a', href=True):
             if isinstance(link, Tag):
                 # Check if link is inside excluded sections (tags, categories, author, nav)
-                parent_classes: List[str] = []
+                parent_classes: list[str] = []
                 for parent in link.parents:
                     if isinstance(parent, Tag):
                         class_attr = parent.get('class')
@@ -1796,7 +1817,7 @@ class BlogExtractor:
 
         return links
 
-    def extract_blog_data(self, url: str) -> Dict[str, Any]:
+    def extract_blog_data(self, url: str) -> dict[str, Any]:
         """Extract all blog data from a URL"""
         self._log("info", f"Processing: {url}")
 
@@ -1876,7 +1897,7 @@ class BlogExtractor:
         self.extracted_data.append(data)
         return data
 
-    async def extract_blog_data_async(self, url: str) -> Dict[str, Any]:
+    async def extract_blog_data_async(self, url: str) -> dict[str, Any]:
         """Async version: Extract all blog data from a URL"""
         self._log("info", f"Processing: {url}")
 
@@ -1961,12 +1982,12 @@ class BlogExtractor:
         self.extracted_data.append(data)
         return data
 
-    async def _extract_with_semaphore(self, url: str, semaphore: asyncio.Semaphore) -> Dict[str, Any]:
+    async def _extract_with_semaphore(self, url: str, semaphore: asyncio.Semaphore) -> dict[str, Any]:
         """Extract blog data with semaphore to limit concurrent requests"""
         async with semaphore:
             return await self.extract_blog_data_async(url)
 
-    async def _batch_download_images_async(self, image_urls: List[str]) -> None:
+    async def _batch_download_images_async(self, image_urls: list[str]) -> None:
         """Batch download multiple images asynchronously for faster performance
 
         Args:
@@ -1989,7 +2010,7 @@ class BlogExtractor:
             if download_tasks:
                 await asyncio.gather(*download_tasks, return_exceptions=True)
 
-    async def process_urls_concurrently(self, urls: List[str], max_concurrent: int = 5, progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None) -> List[Dict[str, Any]]:
+    async def process_urls_concurrently(self, urls: list[str], max_concurrent: int = 5, progress_callback: Callable[[dict[str, Any]], None] | None = None) -> list[dict[str, Any]]:
         """Process multiple URLs concurrently with rate limiting
 
         Now includes async image downloads for significantly faster performance.
@@ -2019,7 +2040,7 @@ class BlogExtractor:
         tasks = [self._extract_with_semaphore(url, semaphore) for url in urls]
 
         # Run all tasks concurrently and update progress as they complete
-        processed_results: List[Dict[str, Any]] = []
+        processed_results: list[dict[str, Any]] = []
         completed_count = 0
 
         for coro in asyncio.as_completed(tasks):
@@ -2039,9 +2060,11 @@ class BlogExtractor:
                         progress_callback(result)
                     except Exception as callback_error:
                         self._log("warning", f"Progress callback error: {callback_error}")
+                        logger.debug("Progress callback raised", exc_info=True)
 
             except Exception as e:
                 self._log("error", f"Exception during processing: {e}")
+                logger.debug("URL task raised", exc_info=True)
                 completed_count += 1
                 processed_results.append({
                     'status': 'failed',
@@ -2053,19 +2076,20 @@ class BlogExtractor:
                         progress_callback({'status': 'failed', 'error': str(e)})
                     except Exception as callback_error:
                         self._log("warning", f"Progress callback error: {callback_error}")
+                        logger.debug("Progress callback raised", exc_info=True)
 
         # Cleanup shared browser resources
         await self.close_browser()
 
         return processed_results
 
-    def load_urls(self) -> List[str]:
+    def load_urls(self) -> list[str]:
         """Load URLs from the input file with validation
 
         Uses validators library to ensure URLs are properly formed before processing.
         Invalid URLs are logged and skipped to avoid wasted processing.
         """
-        urls: List[str] = []
+        urls: list[str] = []
         invalid_urls = []
 
         if not os.path.exists(self.urls_file):
@@ -2163,7 +2187,7 @@ class BlogExtractor:
             'mysql_gmt': date_obj.strftime('%Y-%m-%d %H:%M:%S')          # Same for GMT (simplified)
         }
 
-    def _download_image(self, img_url: str) -> Optional[str]:
+    def _download_image(self, img_url: str) -> str | None:
         """Download image to local directory and return local file path
 
         Args:
@@ -2239,9 +2263,10 @@ class BlogExtractor:
 
         except Exception as e:
             self._log("warning", f"  Failed to download image {img_url[:60]}...: {e}")
+            logger.debug("Image download failed for %s", img_url, exc_info=True)
             return None
 
-    async def _download_image_async(self, img_url: str, session: aiohttp.ClientSession) -> Optional[str]:
+    async def _download_image_async(self, img_url: str, session: aiohttp.ClientSession) -> str | None:
         """Async version: Download image to local directory and return local file path
 
         Significantly faster in concurrent mode as multiple images can download in parallel.
@@ -2319,6 +2344,7 @@ class BlogExtractor:
 
         except Exception as e:
             self._log("warning", f"  Failed to download image {img_url[:60]}...: {e}")
+            logger.debug("Image download failed for %s", img_url, exc_info=True)
             return None
 
     def _resolve_image_url(self, img_url: str) -> str:
@@ -2385,6 +2411,7 @@ class BlogExtractor:
         except Exception as e:
             # If resolution fails, log warning and return original URL
             self._log("warning", f"  Could not resolve image URL {img_url[:60]}...: {e}")
+            logger.debug("Image URL resolution failed for %s", img_url, exc_info=True)
             self.resolved_image_cache[img_url] = img_url
             return img_url
 
@@ -2538,7 +2565,7 @@ class BlogExtractor:
             self._xml_attachment_ids[image_src] = self._claim_xml_id(base)
         return self._xml_attachment_ids[image_src]
 
-    def _write_xml_post(self, f: Any, post: Dict[str, Any]) -> None:
+    def _write_xml_post(self, f: Any, post: dict[str, Any]) -> None:
         """Write single post to WordPress XML"""
         # Normalize unicode characters in all text fields
         title = self.normalize_unicode(post["title"])
@@ -2580,7 +2607,7 @@ class BlogExtractor:
         slug = path_segments[-1] if path_segments else title.lower().replace(' ', '-')
         # Remove .htm, .html, .php extensions from slug
         slug = re.sub(r'\.(htm|html|php)$', '', slug, flags=re.IGNORECASE)
-        f.write('<wp:post_name><![CDATA[{}]]></wp:post_name>\n'.format(slug))
+        f.write(f'<wp:post_name><![CDATA[{slug}]]></wp:post_name>\n')
         f.write('<wp:status><![CDATA[publish]]></wp:status>\n')
         f.write('<wp:post_parent>0</wp:post_parent>\n')
         f.write('<wp:menu_order>0</wp:menu_order>\n')
@@ -2624,7 +2651,7 @@ class BlogExtractor:
         for idx, image in enumerate(images):
             self._write_xml_attachment(f, image, idx, post_id, date_formats, author)
 
-    def _write_xml_attachment(self, f: Any, image: Dict[str, str], post_id: int, parent_post_id: int, date_formats: dict, author: str) -> None:
+    def _write_xml_attachment(self, f: Any, image: dict[str, str], post_id: int, parent_post_id: int, date_formats: dict, author: str) -> None:
         """Write single attachment item to WordPress XML"""
         # Get image source - resolve to clean HTTPS URL for WordPress import
         image_src = image['src']
@@ -2646,7 +2673,7 @@ class BlogExtractor:
         self._xml_written_attachments.add(image_src)
 
         # Extract filename from URL for title
-        from urllib.parse import urlparse, parse_qs
+        from urllib.parse import parse_qs, urlparse
         parsed_url = urlparse(image_src)
         base_filename = os.path.basename(parsed_url.path) or 'image'
 
@@ -2682,7 +2709,7 @@ class BlogExtractor:
         f.write(f'<link>{html.escape(image_src)}</link>\n')
         f.write(f'<pubDate>{date_formats["rfc2822"]}</pubDate>\n')
         f.write(f'<dc:creator><![CDATA[{author}]]></dc:creator>\n')
-        f.write('<guid isPermaLink="false">{}</guid>\n'.format(html.escape(image_src)))
+        f.write(f'<guid isPermaLink="false">{html.escape(image_src)}</guid>\n')
         f.write('<description></description>\n')
         f.write('<content:encoded><![CDATA[]]></content:encoded>\n')
         f.write('<excerpt:encoded><![CDATA[]]></excerpt:encoded>\n')
@@ -2698,7 +2725,7 @@ class BlogExtractor:
         f.write('<wp:post_type><![CDATA[attachment]]></wp:post_type>\n')
         f.write('<wp:post_password><![CDATA[]]></wp:post_password>\n')
         f.write('<wp:is_sticky>0</wp:is_sticky>\n')
-        f.write('<wp:attachment_url><![CDATA[{}]]></wp:attachment_url>\n'.format(html.escape(image_src)))
+        f.write(f'<wp:attachment_url><![CDATA[{html.escape(image_src)}]]></wp:attachment_url>\n')
         f.write('</item>\n')
 
     def save_to_xml(self, filename: str) -> None:
@@ -2730,8 +2757,7 @@ class BlogExtractor:
                     f.write(f"## {post['title']}\n")
                     f.write(f"Source: {post['url']}\n\n")
 
-                    for link in post['links']:
-                        f.write(f"{link['text']} -> {link['url']}\n")
+                    f.writelines(f"{link['text']} -> {link['url']}\n" for link in post['links'])
 
                     f.write("\n" + "="*80 + "\n\n")
 
@@ -2742,7 +2768,7 @@ class BlogExtractor:
         output_path = os.path.join(self.output_dir, filename)
 
         # Prepare data for JSON export
-        json_data: Dict[str, Any] = {
+        json_data: dict[str, Any] = {
             'export_date': datetime.now().isoformat(),
             'total_posts': len([p for p in self.extracted_data if p['status'] == 'success']),
             'posts': []
@@ -2814,7 +2840,7 @@ class BlogExtractor:
 
     def get_json_content(self) -> str:
         """Generate and return JSON content as string"""
-        json_data: Dict[str, Any] = {
+        json_data: dict[str, Any] = {
             'export_date': datetime.now().isoformat(),
             'total_posts': len([p for p in self.extracted_data if p['status'] == 'success']),
             'posts': []

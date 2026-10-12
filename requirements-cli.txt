@@ -12,12 +12,12 @@ pillow>=12.3.0
 filetype>=1.2.0
 
 # Async I/O for performance
-aiohttp>=3.14.3
+aiohttp>=3.14.5
 aiofiles>=25.1.0
 
 # Date parsing & URL validation
 python-dateutil>=2.9.0
-validators>=0.35.0
+validators>=0.36.0
 
 # Progress bars & CLI
 tqdm>=4.70.1

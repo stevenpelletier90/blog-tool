@@ -32,9 +32,9 @@ soup.decode(formatter="minimal")
 
 ### 3. Windows Asyncio Event Loop
 
-**Location:** Top of extract.py, blog_extractor.py, streamlit_app.py
+**Location:** `setup_windows_environment()` in blog_extractor.py; the top of extract.py and streamlit_app.py
 
-Use `asyncio.run()` and leave the event-loop policy alone. Python's default loop on Windows is already ProactorEventLoop, which Playwright's subprocesses need, and `WindowsProactorEventLoopPolicy` is deprecated in 3.14 and removed in 3.16. The only Windows-specific line is the ResourceWarning filter for Playwright subprocess cleanup.
+Use `asyncio.run()` and leave the event-loop policy alone. Python's default loop on Windows is already ProactorEventLoop, which Playwright's subprocesses need, and `WindowsProactorEventLoopPolicy` is deprecated in 3.14 and removed in 3.16. The only Windows-specific line is the ResourceWarning filter for Playwright subprocess cleanup. streamlit_app.py once also created and set a `ProactorEventLoop` before importing Streamlit; it was removed on 2026-10-12 after a headless `streamlit run` on Python 3.14.8 / Streamlit 1.65 launched Playwright and completed extractions without it.
 
 ### 4. MD5 Content Hashing
 
@@ -78,7 +78,7 @@ https://s3.amazonaws.com/bucket/image.jpg?signature=...&expires=...
 
 ### Image Import Strategy
 
-**Default:** `download_images=False` (Streamlit UI always uses False)
+**Default:** no local downloads in either app. The CLI's `--download-images` flag is off unless given, and the Streamlit UI always passes `download_images=False`. The `BlogExtractor` class itself defaults to `download_images=True`, so code that builds one directly passes `download_images=False` to get the same behaviour.
 
 Images are imported via WordPress XML only - no local downloads by default.
 
@@ -121,11 +121,17 @@ Explicitly excludes site-wide SEO terms and navigation items:
 ## Callback-Based Logging Pattern
 
 ```python
-def _log(self, level: str, message: str):
+def _log(self, level: str, message: str) -> None:
+    logger.log(getattr(logging, level.upper(), logging.INFO), message)
     if self.callback:
         self.callback(level, message)  # UI can display this
-    logger.log(getattr(logging, level.upper()), message)
+    elif self.verbose:
+        print(message)  # CLI; falls back to ASCII when the console can't encode it
 ```
+
+**Tracebacks:** `_log` records the message only. A handler that catches a broad `Exception` also calls
+`logger.debug(..., exc_info=True)` (or `logger.exception` at a UI boundary) so the trace is kept, which
+is also what ruff's `BLE001` (blind-except) accepts.
 
 **Why:** Allows UI integration (Streamlit) without tight coupling
 **Note:** The extractor calls `logging.basicConfig`; override in CLI/UI entry points if host app needs custom handlers

@@ -8,6 +8,7 @@ __version__ = "1.0.0"
 
 # Setup Windows environment before any other imports
 import sys
+
 if sys.platform.startswith('win'):
     import warnings
     # Suppress Playwright subprocess cleanup warnings on Windows
@@ -22,7 +23,13 @@ import time
 
 # Third-party imports
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 from rich.table import Table
 
 # Local imports
