@@ -34,7 +34,7 @@ soup.decode(formatter="minimal")
 
 **Location:** `setup_windows_environment()` in blog_extractor.py; the top of extract.py and streamlit_app.py
 
-Use `asyncio.run()` and leave the event-loop policy alone. Python's default loop on Windows is already ProactorEventLoop, which Playwright's subprocesses need, and `WindowsProactorEventLoopPolicy` is deprecated in 3.14 and removed in 3.16. The only Windows-specific line is the ResourceWarning filter for Playwright subprocess cleanup. streamlit_app.py once also created and set a `ProactorEventLoop` before importing Streamlit; it was removed on 2026-10-12 after a headless `streamlit run` on Python 3.14.8 / Streamlit 1.65 launched Playwright and completed extractions without it.
+Use `asyncio.run()` and leave the event-loop policy alone. Python's default loop on Windows is already ProactorEventLoop, which Playwright's subprocesses need, and `WindowsProactorEventLoopPolicy` is deprecated in 3.14 and removed in 3.16. The only Windows-specific line is the ResourceWarning filter for Playwright subprocess cleanup. streamlit_app.py sets no `ProactorEventLoop` before importing Streamlit either: a headless `streamlit run` launches Playwright and completes extractions without one.
 
 ### 4. blake2s Content Hashing
 
@@ -80,7 +80,7 @@ https://s3.amazonaws.com/bucket/image.jpg?signature=...&expires=...
 
 **Default:** no local downloads in either app. The CLI's `--download-images` flag is off unless given, and the Streamlit UI always passes `download_images=False`. The `BlogExtractor` class itself defaults to `download_images=True`, so code that builds one directly passes `download_images=False` to get the same behaviour.
 
-Images are imported via WordPress XML only - no local downloads by default.
+Images are imported via WordPress XML only.
 
 **How it works:**
 

@@ -1,12 +1,12 @@
 # CLAUDE.md
 
-This file provides critical guidance to Claude Code when working with this repository. For user documentation, see [README.md](README.md). For technical details, see [ARCHITECTURE.md](ARCHITECTURE.md).
+This file provides guidance to Claude Code when working with this repository. For user documentation, see [README.md](README.md). For technical details, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Path-specific rules live in `.claude/rules/` (extraction code, setup scripts, Streamlit Cloud) and load when Claude reads or edits a matching file.
 
 ## Project Overview
 
-A production-ready blog post extraction and migration tool that converts blog content from any platform (Wix, WordPress, Medium, DealerOn, DealerInspire, etc.) into WordPress-compatible XML format. Uses Playwright for JavaScript-heavy sites with intelligent fallback to requests library.
+A blog post extraction and migration tool that converts blog content from any platform (Wix, WordPress, Medium, DealerOn, DealerInspire, etc.) into WordPress-compatible XML format. Uses Playwright for JavaScript-heavy sites with fallback to requests library.
 
 ## Core Architecture
 
@@ -23,9 +23,7 @@ A production-ready blog post extraction and migration tool that converts blog co
 - Content hashing (blake2s) prevents duplicate processing
 - Semaphore-based concurrent processing with asyncio
 
-## Deployment Considerations
-
-### Other Environments
+## Deployment
 
 - **CI/Docker:** Cache virtual environment + run `python -m playwright install --with-deps` during build
 - **Virtual environment:** Uses `blog-extractor-env/` by default (created by setup scripts)

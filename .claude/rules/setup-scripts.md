@@ -6,20 +6,9 @@ paths:
 
 # Setup scripts
 
-## Deployment Considerations
+`setup.bat` (Windows) and `setup.sh` (Mac/Linux) each handle:
 
-### Local Setup
-
-**Automated setup scripts available:**
-
-- **Windows:** `setup.bat` - One-click installation
-- **Mac/Linux:** `setup.sh` - Automated bash script
-
-Both scripts handle:
-
-- Virtual environment creation (`blog-extractor-env/`)
+- Virtual environment creation (the folder CLAUDE.md names)
 - Dependency installation
 - Playwright browser installation
 - Directory structure setup
-
-Users can simply run the setup script and start extracting.

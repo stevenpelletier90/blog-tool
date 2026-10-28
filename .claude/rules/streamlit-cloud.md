@@ -10,7 +10,7 @@ paths:
 
 ### Streamlit Cloud
 
-**Full Playwright support enabled!** The app automatically installs browsers on first startup.
+The app automatically installs browsers on first startup.
 
 **Required files:**
 
@@ -26,10 +26,4 @@ paths:
    missing - no browser revision is hard-coded, so a Playwright upgrade needs no edit here
 4. Falls back to requests library if installation fails
 
-**packages.txt contents:**
-
-```text
-libnss3, libnspr4, libatk1.0-0, libatk-bridge2.0-0, libcups2, libdrm2,
-libxkbcommon0, libxcomposite1, libxdamage1, libxfixes3, libxrandr2,
-libgbm1, libpango-1.0-0, libcairo2, libasound2, libatspi2.0-0, libwayland-client0
-```
+**packages.txt contents:** read `packages.txt` itself (one apt package per line).
