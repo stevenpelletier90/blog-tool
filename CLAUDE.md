@@ -20,7 +20,7 @@ A production-ready blog post extraction and migration tool that converts blog co
 
 - Callback-based logging for UI integration without tight coupling
 - Graceful degradation: async Playwright → sync Playwright → requests
-- Content hashing (MD5) prevents duplicate processing
+- Content hashing (blake2s) prevents duplicate processing
 - Semaphore-based concurrent processing with asyncio
 
 ## Deployment Considerations
@@ -41,7 +41,7 @@ A production-ready blog post extraction and migration tool that converts blog co
 - **create_distribution.py** - Build script: packages a distribution zip (excludes dev/internal files)
 - **packages.txt** - System dependencies for Streamlit Cloud Playwright support
 - **requirements.txt** - Full dependencies (CLI + Streamlit)
-- **requirements-cli.txt** - CLI only (no Streamlit, allows newer Pillow)
+- **requirements-cli.txt** - CLI only (no Streamlit; same `pillow>=12.3.0` floor as requirements.txt)
 - **requirements-dev.txt** - Dev tooling (ruff, mypy, pytest)
 
 For detailed architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).
@@ -63,21 +63,14 @@ Install dev tools: `pip install -r requirements-dev.txt`
 
 There are no git hooks — nothing gates a commit. Run the checks above yourself.
 
-**This repo defines no Claude Code hook.** Files Claude edits are auto-fixed by the
-user-level PostToolUse hook (`~/.claude/hooks/format-on-edit.mjs`, shared by every repo),
-which runs `ruff check --fix` on `.py` files Claude edits, using the venv's pinned ruff
-(`blog-extractor-env/`). Files Claude edits never pass through an editor, so nothing else
-tidies them. It always exits 0 and never blocks.
-
-**It deliberately does NOT run `ruff format`.** This repo has never adopted the
+**Don't run `ruff format` here.** This repo has never adopted the
 formatter: `ruff check .` passes clean while `ruff format` would rewrite most of
-blog_extractor.py. Running it in the hook would bury every one-line edit
-under a mass reformat and apply a standard the gate never checks. If you want ruff's
-formatter, adopt it as its own deliberate `ruff format .` commit first, then add it to
-the hook — not the other way round.
+blog_extractor.py, burying every one-line edit under a mass reformat and applying a
+standard the gate never checks. If you want ruff's formatter, adopt it as its own
+deliberate `ruff format .` commit first.
 
 **Adding a dev-only file? Add it to `EXCLUDE_PATTERNS` in `create_distribution.py`.**
 That script uses a blocklist, so anything not listed ships to end users in the zip.
-`ruff.toml` and `scripts/` are excluded there for exactly this reason.
+`ruff.toml` is excluded there for exactly this reason.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full developer setup.

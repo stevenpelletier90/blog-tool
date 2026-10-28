@@ -36,18 +36,18 @@ soup.decode(formatter="minimal")
 
 Use `asyncio.run()` and leave the event-loop policy alone. Python's default loop on Windows is already ProactorEventLoop, which Playwright's subprocesses need, and `WindowsProactorEventLoopPolicy` is deprecated in 3.14 and removed in 3.16. The only Windows-specific line is the ResourceWarning filter for Playwright subprocess cleanup. streamlit_app.py once also created and set a `ProactorEventLoop` before importing Streamlit; it was removed on 2026-10-12 after a headless `streamlit run` on Python 3.14.8 / Streamlit 1.65 launched Playwright and completed extractions without it.
 
-### 4. MD5 Content Hashing
+### 4. blake2s Content Hashing
 
 **Location:** `extract_blog_data()`
 
 **Why:** Prevents duplicate posts when same content appears at different URLs
 **Impact:** Faster extraction, cleaner WordPress import
 **Note:** Uses content only, not title (titles may differ for same content)
-**Future:** For FIPS-compliant environments, migrate to `hashlib.blake2s` or SHA-256
+**Hash:** `hashlib.blake2s` in `get_content_hash()` (not MD5)
 
 ### 5. Concurrent Request Limits
 
-**Default:** 5 concurrent requests (semaphore limit)
+**Default:** 5 concurrent requests in the Streamlit slider; 1 (sequential) for the CLI's `--concurrent` (semaphore limit)
 
 **Why:** Too many concurrent requests overwhelm servers or trigger rate-limiting
 **Impact:** 10+ concurrent may cause failures or IP bans
